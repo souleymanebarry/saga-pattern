@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: catalog-service
+
+  # DataSource (PostgreSQL)
+  datasource:
+    url: jdbc:postgresql://localhost:5432/catalog_service_db
+    username: postgres
+    password: 1234
+    driver-class-name: org.postgresql.Driver
+
+  # JPA / Hibernate
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+
+logging:
+  level:
+    org.springframework.boot.autoconfigure.jdbc: DEBUG
+
+server:
+  port: 8085
+

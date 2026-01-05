@@ -1,0 +1,11 @@
+C:\Users\barry\Developer\2025\archi-async\saga-pattern\catalog-service\src\main\java\com\barry\saga\retail\catalog\dtos\ProductResponseDTO.java
+C:\Users\barry\Developer\2025\archi-async\saga-pattern\catalog-service\src\main\java\com\barry\saga\retail\catalog\mapper\ProductMapper.java
+C:\Users\barry\Developer\2025\archi-async\saga-pattern\catalog-service\src\main\java\com\barry\saga\retail\catalog\controller\impl\ProductControllerImpl.java
+C:\Users\barry\Developer\2025\archi-async\saga-pattern\catalog-service\src\main\java\com\barry\saga\retail\catalog\service\ProductService.java
+C:\Users\barry\Developer\2025\archi-async\saga-pattern\catalog-service\src\main\java\com\barry\saga\retail\catalog\share\event\ProductCreatedEvent.java
+C:\Users\barry\Developer\2025\archi-async\saga-pattern\catalog-service\src\main\java\com\barry\saga\retail\catalog\controller\ProductController.java
+C:\Users\barry\Developer\2025\archi-async\saga-pattern\catalog-service\src\main\java\com\barry\saga\retail\catalog\dtos\ProductRequestDTO.java
+C:\Users\barry\Developer\2025\archi-async\saga-pattern\catalog-service\src\main\java\com\barry\saga\retail\catalog\CatalogServiceApplication.java
+C:\Users\barry\Developer\2025\archi-async\saga-pattern\catalog-service\src\main\java\com\barry\saga\retail\catalog\service\impl\ProductServiceImpl.java
+C:\Users\barry\Developer\2025\archi-async\saga-pattern\catalog-service\src\main\java\com\barry\saga\retail\catalog\entities\ProductEntity.java
+C:\Users\barry\Developer\2025\archi-async\saga-pattern\catalog-service\src\main\java\com\barry\saga\retail\catalog\repositories\ProductRepository.java
