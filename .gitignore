@@ -37,3 +37,13 @@ build/
 **/main/resources/application-*.yml
 
 **/.jqwik-database
+
+*.xml
+
+*.class
+
+*.lst
+
+*.pb
+
+*.jar
