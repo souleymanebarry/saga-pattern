@@ -12,6 +12,7 @@
 	<modules>
 		<module>orders-service</module>
 		<module>catalog-service</module>
+		<module>retail-event-schema</module>
 	</modules>
 
 	<properties>

@@ -29,7 +29,7 @@ public class OrderEventProducer {
     }
 
     /**
-     * event événement déclenché après confirmation de la commande
+     * événement déclenché après confirmation de la commande
      */
     public void sendOrderConfirmed(OrderConfirmedEvent orderConfirmedEvent) {
         kafkaTemplate.send(properties.getTopics().getOrderConfirmed(), orderConfirmedEvent);

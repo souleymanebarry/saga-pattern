@@ -74,3 +74,7 @@ Il démontre :
 * Compensation Saga (rollback stock)
 * Circuit breaker (Resilience4j)
 * Cache Redis du catalogue
+
+
+docker-compose down -v
+docker-compose up -d
