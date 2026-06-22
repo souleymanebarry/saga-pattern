@@ -28,6 +28,21 @@
         </dependency>
     </dependencies>
 
+    <!--
+        Publication du contrat d'événements sur GitHub Packages.
+        Déclaré ici (et non dans le parent) pour ne publier QUE ce module :
+        orders-service / catalog-service ne sont pas des artefacts partagés.
+        Le stock-service (repo externe) consomme cet artefact versionné.
+        Auth requise dans ~/.m2/settings.xml (serveur id = "github-saga"). Voir docs/contract-publishing.md
+    -->
+    <distributionManagement>
+        <repository>
+            <id>github-saga</id>
+            <name>GitHub Packages - saga-pattern</name>
+            <url>https://maven.pkg.github.com/souleymanebarry/saga-pattern</url>
+        </repository>
+    </distributionManagement>
+
     <build>
         <plugins>
             <plugin>
@@ -43,7 +58,6 @@
                         <configuration>
                             <sourceDirectory>${project.basedir}/src/main/avro</sourceDirectory>
                             <outputDirectory>${project.build.directory}/generated-sources/avro</outputDirectory>
-                            <sourceDirectory>${project.basedir}/src/main/avro</sourceDirectory>
                             <stringType>String</stringType>
                             <fieldVisibility>PRIVATE</fieldVisibility>
                             <enableDecimalLogicalType>true</enableDecimalLogicalType>
