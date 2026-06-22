@@ -1,43 +1,76 @@
 package com.barry.saga.retail.orderservice.kafka;
 
+import com.barry.saga.retail.order.event.OrderConfirmedEvent;
+import com.barry.saga.retail.order.event.OrderFailedEvent;
+import com.barry.saga.retail.order.event.OrderPlacedEvent;
 import com.barry.saga.retail.orderservice.kafka.config.KafkaTopicsConfig;
-import com.barry.saga.retail.orderservice.share.event.OrderConfirmedEvent;
-import com.barry.saga.retail.orderservice.share.event.OrderFailedEvent;
-import com.barry.saga.retail.orderservice.share.event.OrderPlacedEvent;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 
+import org.apache.avro.specific.SpecificRecord;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
 
 @Component
 @RequiredArgsConstructor
 @Log4j2
 public class OrderEventProducer {
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final KafkaTemplate<String, SpecificRecord> kafkaTemplate;
     private final KafkaTopicsConfig properties;
 
     /**
-     * event événement contenant les informations d'une commande nouvellement créée
+     * Publie l'événement Avro d'une commande nouvellement créée.
+     * La clé Kafka = orderId garantit l'ordre des événements d'une même commande
+     * (même partition), condition essentielle au Saga.
      */
-    public void sendOrderPlaced(OrderPlacedEvent orderPlacedEvent) {
-        String topic = properties.getTopics().getOrderPlaced();
-        kafkaTemplate.send(topic, orderPlacedEvent);
-        log.info("📤 OrderPlacedEvent send to kafka topic {}: ", topic);
+    public void sendOrderPlaced(OrderPlacedEvent event) {
+        send(properties.getTopics().getOrderPlaced(), event.getOrderId(), event);
     }
 
     /**
-     * événement déclenché après confirmation de la commande
+     * Publie l'événement de confirmation d'une commande (fin nominale du Saga).
      */
-    public void sendOrderConfirmed(OrderConfirmedEvent orderConfirmedEvent) {
-        kafkaTemplate.send(properties.getTopics().getOrderConfirmed(), orderConfirmedEvent);
-        log.info("📤 OrderConfirmedEvent send to kafka topic {}: ", properties.getTopics().getOrderConfirmed());
+    public void sendOrderConfirmed(OrderConfirmedEvent event) {
+        send(properties.getTopics().getOrderConfirmed(), event.getOrderId(), event);
     }
 
-    public void sendOrderFailed(OrderFailedEvent orderFailedEvent) {
-        kafkaTemplate.send(properties.getTopics().getOrderFailed(), orderFailedEvent);
-        log.warn("📤 OrderFailedEvent send to kafka topic {}: ", properties.getTopics().getOrderFailed());
+    /**
+     * Publie l'événement d'échec d'une commande (stock rejeté / compensation Saga).
+     */
+    public void sendOrderFailed(OrderFailedEvent event) {
+        send(properties.getTopics().getOrderFailed(), event.getOrderId(), event);
+    }
+
+    // ===============================
+    // Méthode centrale d’envoi Kafka
+    // ===============================
+    private void send(String topic, String key, SpecificRecord event) {
+
+        ProducerRecord<String, SpecificRecord> record =
+                new ProducerRecord<>(topic, key, event);
+
+        // Headers standards Saga / Event-driven
+        record.headers().add("eventType", event.getClass().getSimpleName().getBytes(StandardCharsets.UTF_8));
+        record.headers().add("schemaVersion", "v1".getBytes(StandardCharsets.UTF_8));
+
+        kafkaTemplate.send(record)
+                .whenComplete((result, ex) -> {
+                    if (ex != null) {
+                        log.error("❌ Failed to send event {} to topic {}",
+                                event.getClass().getSimpleName(), topic, ex);
+                    } else {
+                        log.info("📤 {} sent to topic {} (key={}, partition={}, offset={})",
+                                event.getClass().getSimpleName(),
+                                topic,
+                                key,
+                                result.getRecordMetadata().partition(),
+                                result.getRecordMetadata().offset());
+                    }
+                });
     }
 }
