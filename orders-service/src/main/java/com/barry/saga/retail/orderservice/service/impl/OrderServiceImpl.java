@@ -9,7 +9,8 @@ import com.barry.saga.retail.orderservice.kafka.OrderEventProducer;
 import com.barry.saga.retail.orderservice.kafka.config.KafkaTopicsConfig;
 import com.barry.saga.retail.orderservice.repositories.OrderRepository;
 import com.barry.saga.retail.orderservice.service.OrderService;
-import com.barry.saga.retail.orderservice.share.event.OrderPlacedEvent;
+import com.barry.saga.retail.order.event.OrderItem;
+import com.barry.saga.retail.order.event.OrderPlacedEvent;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
@@ -18,7 +19,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.UUID;
 
 @Service
@@ -59,11 +62,12 @@ public class OrderServiceImpl implements OrderService {
             return existing.get();
         }
 
-        // Enrich items from catalog-service (SOURCE OF TRUTH)
-        enrichOrderItemsWithCatalogData(orderEntity);
-
-        // 2 Basic validation
+        // 1 Basic validation (structure + quantités) AVANT tout appel externe :
+        //   évite un NPE si items == null et n'appelle pas le catalog pour rien.
         validateOrderItems(orderEntity);
+
+        // 2 Enrich items from catalog-service (SOURCE OF TRUTH)
+        enrichOrderItemsWithCatalogData(orderEntity);
 
         // 3 Initialisation de la commande
         // -----------------------------
@@ -108,26 +112,34 @@ public class OrderServiceImpl implements OrderService {
     // ----------------------------------------------------------------------
 
     public OrderPlacedEvent toOrderPlacedEvent(OrderEntity orderEntity) {
-        return OrderPlacedEvent.builder()
-                .eventType("OrderPlaced")
-                .idempotencyKey(orderEntity.getIdempotencyKey())
-                .orderId(orderEntity.getOrderId())
-                .customerId(orderEntity.getCustomerId())
-                .totalAmount(orderEntity.getTotalAmount())
-                .createdAt(orderEntity.getCreatedAt())
-                .items(
+        return OrderPlacedEvent.newBuilder()
+                .setEventId(UUID.randomUUID().toString())
+                .setIdempotencyKey(orderEntity.getIdempotencyKey())
+                .setOrderId(orderEntity.getOrderId().toString())
+                .setCustomerId(orderEntity.getCustomerId())
+                .setTotalAmount(toMoney(orderEntity.getTotalAmount()))
+                .setCreatedAt(orderEntity.getCreatedAt().atZone(ZoneId.systemDefault()).toInstant())
+                .setItems(
                         orderEntity.getItems().stream()
                                 .map(this::toOrderItemEvent)
                                 .toList())
                 .build();
     }
 
-    private OrderPlacedEvent.OrderItem toOrderItemEvent(OrderItemEntity item) {
-        return OrderPlacedEvent.OrderItem.builder()
-                .sku(item.getSku())
-                .quantity(item.getQuantity())
-                .unitPrice(item.getUnitPrice())
+    private OrderItem toOrderItemEvent(OrderItemEntity item) {
+        return OrderItem.newBuilder()
+                .setSku(item.getSku())
+                .setQuantity(item.getQuantity())
+                .setUnitPrice(toMoney(item.getUnitPrice()))
                 .build();
+    }
+
+    /**
+     * Le type Avro {@code decimal(scale=2)} exige une échelle exacte de 2 ;
+     * on normalise donc tout montant monétaire avant sérialisation.
+     */
+    private BigDecimal toMoney(BigDecimal amount) {
+        return amount.setScale(2, RoundingMode.HALF_UP);
     }
 
     // -----------------------------

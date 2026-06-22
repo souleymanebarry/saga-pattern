@@ -1,0 +1,47 @@
+{
+  "type": "record",
+  "name": "OrderConfirmedEvent",
+  "namespace": "com.barry.saga.retail.order.event",
+  "doc": "Event published when an order is confirmed (stock successfully reserved)",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "Unique identifier of the event"
+    },
+    {
+      "name": "orderId",
+      "type": "string",
+      "doc": "Identifiant unique de la commande (UUID)"
+    },
+    {
+      "name": "customerId",
+      "type": "string",
+      "doc": "Identifiant du client"
+    },
+    {
+      "name": "totalAmount",
+      "type": {
+        "type": "bytes",
+        "logicalType": "decimal",
+        "precision": 19,
+        "scale": 2
+      },
+      "doc": "Montant total de la commande confirmée"
+    },
+    {
+      "name": "confirmedAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Date et heure de confirmation de la commande"
+    },
+    {
+      "name": "version",
+      "type": "string",
+      "default": "v1",
+      "doc": "Version du schéma de l'évènement"
+    }
+  ]
+}

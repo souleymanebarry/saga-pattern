@@ -1,0 +1,36 @@
+name: Publish event contracts
+
+# Publie le module retail-event-schema (schémas Avro partagés) sur GitHub Packages.
+# Déclenché à chaque release publiée, ou manuellement.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # autorise le GITHUB_TOKEN à pousser sur GitHub Packages
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          # Configure ~/.m2/settings.xml avec un serveur "github-saga"
+          # alimenté par le GITHUB_TOKEN intégré (aucun PAT requis).
+          server-id: github-saga
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+
+      - name: Deploy retail-event-schema
+        run: mvn -B -pl retail-event-schema deploy
+        env:
+          MAVEN_USERNAME: ${{ github.actor }}
+          MAVEN_PASSWORD: ${{ secrets.GITHUB_TOKEN }}

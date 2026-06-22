@@ -22,6 +22,10 @@ spring:
       order-placed: order.placed
       order-confirmed: order.confirmed
       order-failed: order.failed
+      stock-reserved: stock.reserved
+      stock-rejected: stock.rejected
+    properties:
+      schema.registry.url: http://localhost:8081
 
 logging:
   level:
