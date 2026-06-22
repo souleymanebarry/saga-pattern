@@ -48,6 +48,8 @@ Il démontre :
    confirme la commande
    ou l’échoue
 
+📖 **Détail complet du flux, des événements Avro et des transitions d'état :** [`docs/saga-flow.md`](docs/saga-flow.md)
+
 📡 **Communication inter-services**
 
 | Type          | Utilisation                      |
@@ -74,6 +76,18 @@ Il démontre :
 * Compensation Saga (rollback stock)
 * Circuit breaker (Resilience4j)
 * Cache Redis du catalogue
+
+#   **🚀 Tu es prêt pour la prod**
+
+Si tu veux, je peux maintenant :
+
+🔁 Ajouter DLQ (Dead Letter Topic)
+
+🔐 Ajouter SASL / SSL
+
+🧪 Ajouter tests Kafka embarqués
+
+📊 Ajouter metrics + tracing
 
 
 docker-compose down -v
