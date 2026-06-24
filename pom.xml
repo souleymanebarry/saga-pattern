@@ -72,6 +72,13 @@
 					<version>${spring.boot.version}</version>
 				</plugin>
 
+				<!-- Surefire récent : indispensable pour découvrir/exécuter les tests JUnit 5 -->
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-surefire-plugin</artifactId>
+					<version>3.5.2</version>
+				</plugin>
+
 				<!-- Activation annotation processors pour MapStruct et Lombok -->
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
