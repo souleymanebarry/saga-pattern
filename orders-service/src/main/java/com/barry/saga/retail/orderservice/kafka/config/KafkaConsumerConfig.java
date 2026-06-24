@@ -1,9 +1,11 @@
 package com.barry.saga.retail.orderservice.kafka.config;
 
-import com.barry.saga.retail.orderservice.share.event.StockRejectedEvent;
-import com.barry.saga.retail.orderservice.share.event.StockReservedEvent;
+import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig;
+import io.confluent.kafka.serializers.KafkaAvroDeserializer;
+import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
 import lombok.extern.log4j.Log4j2;
 
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
@@ -17,7 +19,6 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
-import org.springframework.kafka.support.serializer.JsonDeserializer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -30,10 +31,15 @@ public class KafkaConsumerConfig {
     @Value("${spring.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
+    @Value("${spring.kafka.properties.schema.registry.url}")
+    private String schemaRegistry;
+
     /**
-     * common consumer properties
+     * Configuration commune des consommateurs Avro.
+     * Une seule factory suffit : le type concret de l'événement est résolu
+     * dynamiquement par le Schema Registry (specific.avro.reader=true).
      */
-    public Map<String, Object> baseConsumerProps() {
+    public Map<String, Object> consumerProps() {
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
 
@@ -44,76 +50,36 @@ public class KafkaConsumerConfig {
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
+        // Désérialisation : clé String, valeur Avro (tolérante aux erreurs)
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
+        props.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, KafkaAvroDeserializer.class);
+
+        // Schema Registry + lecture en classes Avro spécifiques (SpecificRecord générés)
+        props.put(AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, schemaRegistry);
+        props.put(KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG, true);
+
         return props;
     }
 
-    /* =========================================================
-       🔹 Consumer: StockReservedEvent
-    ========================================================= */
     @Bean
-    public ConsumerFactory<String, StockReservedEvent> stockReservedConsumerFactory(){
-        JsonDeserializer<StockReservedEvent> deserializer = new JsonDeserializer<>(StockReservedEvent.class);
-        deserializer.addTrustedPackages("com.barry.saga.retail.orderservice.share.event");
-        deserializer.setUseTypeHeaders(false);
-
-        return new DefaultKafkaConsumerFactory<>(
-                baseConsumerProps(),
-                new StringDeserializer(),
-                new ErrorHandlingDeserializer<>(deserializer));
+    public ConsumerFactory<String, SpecificRecord> consumerFactory() {
+        return new DefaultKafkaConsumerFactory<>(consumerProps());
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, StockReservedEvent> stockReservedKafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, StockReservedEvent> factory =
+    public ConcurrentKafkaListenerContainerFactory<String, SpecificRecord> kafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, SpecificRecord> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
 
-        factory.setConsumerFactory(stockReservedConsumerFactory());
+        factory.setConsumerFactory(consumerFactory());
         factory.setConcurrency(1);
-
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
         factory.setCommonErrorHandler(commonErrorHandler());
-        return factory;
-    }
-
-    /* =========================================================
-    🔹 Consumer: StockRejectedEvent
-    ========================================================= */
-    @Bean
-    public ConsumerFactory<String, StockRejectedEvent> stockRejectedConsumerFactory(){
-        JsonDeserializer<StockRejectedEvent> deserializer = new JsonDeserializer<>(StockRejectedEvent.class);
-        deserializer.addTrustedPackages("com.barry.saga.retail.orderservice.share.event");
-        deserializer.setUseTypeHeaders(false);
-
-        return new DefaultKafkaConsumerFactory<>(
-                baseConsumerProps(),
-                new StringDeserializer(),
-                new ErrorHandlingDeserializer<>(deserializer));
-    }
-
-   /* =========================================================
-   🔹 Consumer: StockRejectedEvent
-   ========================================================= */
-    @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, StockRejectedEvent>
-    stockRejectedKafkaListenerContainerFactory() {
-
-        ConcurrentKafkaListenerContainerFactory<String, StockRejectedEvent> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
-
-        factory.setConsumerFactory(stockRejectedConsumerFactory());
-        factory.setConcurrency(1);
-
-        factory.getContainerProperties()
-                .setAckMode(ContainerProperties.AckMode.MANUAL);
-
-        factory.setCommonErrorHandler(commonErrorHandler());
 
         return factory;
     }
 
-    /* =========================================================
-      🔹 Error handler commun
-      ========================================================= */
     @Bean
     public DefaultErrorHandler commonErrorHandler() {
         return new DefaultErrorHandler((record, exception) ->

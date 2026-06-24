@@ -1,0 +1,42 @@
+{
+  "type": "record",
+  "name": "StockRejectedEvent",
+  "namespace": "com.barry.saga.retail.stock.event",
+  "doc": "Event published when stock reservation fails",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "Unique identifier of the event"
+    },
+    {
+      "name": "orderId",
+      "type": "string",
+      "doc": "Identifier of the order (UUID as string)"
+    },
+    {
+      "name": "idempotencyKey",
+      "type": "string",
+      "doc": "Idempotency key to prevent duplicate processing"
+    },
+    {
+      "name": "reason",
+      "type": "string",
+      "doc": "Reason why stock reservation was rejected"
+    },
+    {
+      "name": "rejectedAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Timestamp when the stock was rejected"
+    },
+    {
+      "name": "version",
+      "type": "string",
+      "default": "v1",
+      "doc": "Schema version"
+    }
+  ]
+}

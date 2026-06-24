@@ -1,0 +1,86 @@
+{
+  "type": "record",
+  "name": "OrderPlacedEvent",
+  "namespace": "com.barry.saga.retail.order.event",
+  "doc": "Event published when a customer places an order",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "Unique identifier of the event"
+    },
+    {
+      "name": "orderId",
+      "type": "string",
+      "doc": "Identifiant unique de la commande (UUID)"
+    },
+    {
+      "name": "customerId",
+      "type": "string",
+      "doc": "Identifiant du client"
+    },
+    {
+      "name": "items",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "OrderItem",
+          "doc": "Article d'une commande",
+          "fields": [
+            {
+              "name": "sku",
+              "type": "string",
+              "doc": "Code produit (Stock Keeping Unit)"
+            },
+            {
+              "name": "quantity",
+              "type": "int",
+              "doc": "Quantité commandée"
+            },
+            {
+              "name": "unitPrice",
+              "type": {
+                "type": "bytes",
+                "logicalType": "decimal",
+                "precision": 19,
+                "scale": 2
+              },
+              "doc": "Prix unitaire de l'article"
+            }
+          ]
+        }
+      },
+      "doc": "Liste des articles de la commande"
+    },
+    {
+      "name": "totalAmount",
+      "type": {
+        "type": "bytes",
+        "logicalType": "decimal",
+        "precision": 19,
+        "scale": 2
+      },
+      "doc": "Montant total de la commande"
+    },
+    {
+      "name": "createdAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Date et heure de création de la commande"
+    },
+    {
+      "name": "idempotencyKey",
+      "type": "string",
+      "doc": "Clé d'idempotence pour éviter les doublons"
+    },
+    {
+      "name": "version",
+      "type": "string",
+      "default": "v1",
+      "doc": "Version du schéma de l'évènement"
+    }
+  ]
+}

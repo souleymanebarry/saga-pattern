@@ -1,0 +1,184 @@
+{
+  "info": {
+    "name": "Saga Pattern - Retail",
+    "description": "Collection regroupant les requêtes des services de la démo Saga (orders-service, catalog-service) ainsi que l'API REST du Schema Registry.\n\nVariables de collection (onglet Variables) :\n- ordersBaseUrl : http://localhost:8080\n- catalogBaseUrl : http://localhost:8085\n- schemaRegistryUrl : http://localhost:8081\n- orderId : rempli automatiquement après 'Create Order'\n- sku : SKU par défaut utilisé dans les requêtes catalog\n\nPrérequis up : PostgreSQL (5432), Kafka (9092), Schema Registry (8081), catalog-service (8085), orders-service (8080).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "ordersBaseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "catalogBaseUrl", "value": "http://localhost:8085", "type": "string" },
+    { "key": "schemaRegistryUrl", "value": "http://localhost:8081", "type": "string" },
+    { "key": "orderId", "value": "", "type": "string" },
+    { "key": "sku", "value": "SKU-123", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Orders Service",
+      "item": [
+        {
+          "name": "Create Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "if (body && body.orderId) {",
+                  "  pm.collectionVariables.set('orderId', body.orderId);",
+                  "  console.log('orderId capturé =', body.orderId);",
+                  "}",
+                  "pm.test('statut PENDING', () => pm.expect(body.status).to.eql('PENDING'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"CUST-001\",\n  \"items\": [\n    { \"sku\": \"{{sku}}\", \"quantity\": 2 },\n    { \"sku\": \"SKU-456\", \"quantity\": 1 }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{ordersBaseUrl}}/api/v1/orders",
+              "host": ["{{ordersBaseUrl}}"],
+              "path": ["api", "v1", "orders"]
+            },
+            "description": "Crée une commande (statut PENDING) et publie un OrderPlacedEvent sur le topic 'order.placed'.\n\nNe pas envoyer idempotencyKey : le contrôleur en génère un et le renvoie dans le header 'Idempotency-key'.\nLes SKU doivent exister dans le catalog-service (enrichissement prix + nom)."
+          }
+        },
+        {
+          "name": "Get Order By Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{ordersBaseUrl}}/api/v1/orders/{{orderId}}",
+              "host": ["{{ordersBaseUrl}}"],
+              "path": ["api", "v1", "orders", "{{orderId}}"]
+            },
+            "description": "Récupère une commande par son ID. Utilise la variable {{orderId}} renseignée automatiquement par 'Create Order'.\n\nAprès la réservation de stock le statut passe à STOCK_RESERVED puis CONFIRMED."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog Service",
+      "item": [
+        {
+          "name": "Get All Products",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/v1/products",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "v1", "products"]
+            },
+            "description": "Liste tous les produits du catalog. Pratique pour récupérer des SKU valides à utiliser dans 'Create Order'."
+          }
+        },
+        {
+          "name": "Get Product By SKU",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{catalogBaseUrl}}/api/v1/products/{{sku}}",
+              "host": ["{{catalogBaseUrl}}"],
+              "path": ["api", "v1", "products", "{{sku}}"]
+            },
+            "description": "Récupère un produit par son SKU."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Schema Registry",
+      "item": [
+        {
+          "name": "List Subjects",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{schemaRegistryUrl}}/subjects",
+              "host": ["{{schemaRegistryUrl}}"],
+              "path": ["subjects"]
+            },
+            "description": "Liste tous les sujets enregistrés (un sujet par topic-value)."
+          }
+        },
+        {
+          "name": "Subject Versions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{schemaRegistryUrl}}/subjects/order.placed-value/versions",
+              "host": ["{{schemaRegistryUrl}}"],
+              "path": ["subjects", "order.placed-value", "versions"]
+            },
+            "description": "Liste les versions d'un sujet."
+          }
+        },
+        {
+          "name": "Latest Schema (full)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{schemaRegistryUrl}}/subjects/order.placed-value/versions/latest",
+              "host": ["{{schemaRegistryUrl}}"],
+              "path": ["subjects", "order.placed-value", "versions", "latest"]
+            },
+            "description": "Dernière version d'un sujet (métadonnées + schéma). Remplacez 'order.placed-value' par order.confirmed-value ou stock.reserved-value."
+          }
+        },
+        {
+          "name": "Latest Schema (raw)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{schemaRegistryUrl}}/subjects/order.placed-value/versions/latest/schema",
+              "host": ["{{schemaRegistryUrl}}"],
+              "path": ["subjects", "order.placed-value", "versions", "latest", "schema"]
+            },
+            "description": "Renvoie uniquement le schéma Avro brut (sans métadonnées)."
+          }
+        },
+        {
+          "name": "Schema By Global Id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{schemaRegistryUrl}}/schemas/ids/1",
+              "host": ["{{schemaRegistryUrl}}"],
+              "path": ["schemas", "ids", "1"]
+            },
+            "description": "Récupère un schéma par son ID global (1=OrderPlacedEvent, 2=StockReservedEvent, 3=OrderConfirmedEvent)."
+          }
+        },
+        {
+          "name": "Global Compatibility Config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{schemaRegistryUrl}}/config",
+              "host": ["{{schemaRegistryUrl}}"],
+              "path": ["config"]
+            },
+            "description": "Niveau de compatibilité global (BACKWARD par défaut)."
+          }
+        }
+      ]
+    }
+  ]
+}
