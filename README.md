@@ -92,3 +92,10 @@ Si tu veux, je peux maintenant :
 
 docker-compose down -v
 docker-compose up -d
+
+GET  http://localhost:8081/subjects                              # liste des sujets                                                                                                                                               
+GET  http://localhost:8081/subjects/{subject}/versions           # versions d'un sujet                                                                                                                                            
+GET  http://localhost:8081/subjects/{subject}/versions/latest    # dernier schéma                                                                                                                                                 
+GET  http://localhost:8081/schemas/ids/{id}                      # schéma par ID global                                                                                                                                           
+GET  http://localhost:8081/config                                # niveau de compatibilité global                                                                                                                                 
+GET  http://localhost:8081/subjects/{subject}/versions/latest/schema   # juste le schéma brut      
