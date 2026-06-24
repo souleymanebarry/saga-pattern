@@ -1,0 +1,56 @@
+{
+  "type": "record",
+  "name": "StockReservedEvent",
+  "namespace": "com.barry.saga.retail.stock.event",
+  "doc": "Event published when stock is successfully reserved for an order",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "Unique identifier of the event"
+    },
+    {
+      "name": "orderId",
+      "type": "string",
+      "doc": "Identifier of the order (UUID as string)"
+    },
+    {
+      "name": "items",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "StockItem",
+          "doc": "Item reserved in stock",
+          "fields": [
+            {
+              "name": "sku",
+              "type": "string",
+              "doc": "Product SKU"
+            },
+            {
+              "name": "quantity",
+              "type": "int",
+              "doc": "Quantity reserved"
+            }
+          ]
+        }
+      },
+      "doc": "List of reserved items"
+    },
+    {
+      "name": "reservedAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Timestamp when the stock was reserved"
+    },
+    {
+      "name": "version",
+      "type": "string",
+      "default": "v1",
+      "doc": "Schema version"
+    }
+  ]
+}
