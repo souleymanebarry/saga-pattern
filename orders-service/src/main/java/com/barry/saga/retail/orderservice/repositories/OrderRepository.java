@@ -8,8 +8,6 @@ import java.util.UUID;
 
 public interface OrderRepository extends JpaRepository<OrderEntity, UUID> {
 
-    boolean existsByIdempotencyKey(String idempotencyKey);
-
     Optional<OrderEntity> findByIdempotencyKey(String idempotencyKey);
 
 }
