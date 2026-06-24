@@ -82,12 +82,12 @@ public class KafkaConsumerConfig {
 
     @Bean
     public DefaultErrorHandler commonErrorHandler() {
-        return new DefaultErrorHandler((record, exception) ->
+        return new DefaultErrorHandler((consumerRecord, exception) ->
                 log.error(
                         "❌ Kafka error | topic={} | partition={} | offset={}",
-                        record.topic(),
-                        record.partition(),
-                        record.offset(),
+                        consumerRecord.topic(),
+                        consumerRecord.partition(),
+                        consumerRecord.offset(),
                         exception
                 )
         );
