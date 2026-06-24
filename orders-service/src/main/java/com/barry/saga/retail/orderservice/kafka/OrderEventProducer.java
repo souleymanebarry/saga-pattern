@@ -51,14 +51,14 @@ public class OrderEventProducer {
     // ===============================
     private void send(String topic, String key, SpecificRecord event) {
 
-        ProducerRecord<String, SpecificRecord> record =
+        ProducerRecord<String, SpecificRecord> producerRecord =
                 new ProducerRecord<>(topic, key, event);
 
         // Headers standards Saga / Event-driven
-        record.headers().add("eventType", event.getClass().getSimpleName().getBytes(StandardCharsets.UTF_8));
-        record.headers().add("schemaVersion", "v1".getBytes(StandardCharsets.UTF_8));
+        producerRecord.headers().add("eventType", event.getClass().getSimpleName().getBytes(StandardCharsets.UTF_8));
+        producerRecord.headers().add("schemaVersion", "v1".getBytes(StandardCharsets.UTF_8));
 
-        kafkaTemplate.send(record)
+        kafkaTemplate.send(producerRecord)
                 .whenComplete((result, ex) -> {
                     if (ex != null) {
                         log.error("❌ Failed to send event {} to topic {}",
