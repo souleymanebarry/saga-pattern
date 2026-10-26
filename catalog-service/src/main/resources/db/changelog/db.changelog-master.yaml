@@ -1,0 +1,8 @@
+databaseChangeLog:
+  - include:
+      file: DDL/001-create-products-table.sql
+      relativeToChangelogFile: true
+
+  - include:
+      file: DML/001-insert-products.sql
+      relativeToChangelogFile: true
