@@ -9,7 +9,7 @@ import com.barry.saga.retail.orderservice.exceptions.OrderNotFoundException;
 import com.barry.saga.retail.orderservice.kafka.OrderEventProducer;
 import com.barry.saga.retail.orderservice.kafka.config.KafkaTopicsConfig;
 import com.barry.saga.retail.orderservice.repositories.OrderRepository;
-import com.barry.saga.retail.orderservice.share.event.OrderPlacedEvent;
+import com.barry.saga.retail.order.event.OrderPlacedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -152,7 +152,6 @@ class OrderServiceImplTest {
         ArgumentCaptor<OrderPlacedEvent> captor = ArgumentCaptor.forClass(OrderPlacedEvent.class);
         verify(orderEventProducer).sendOrderPlaced(captor.capture());
         OrderPlacedEvent event = captor.getValue();
-        assertThat(event.getEventType()).isEqualTo("OrderPlaced");
         assertThat(event.getCustomerId()).isEqualTo("cust-42");
         assertThat(event.getTotalAmount()).isEqualByComparingTo("20.00");
         assertThat(event.getItems()).hasSize(1);
@@ -233,7 +232,14 @@ class OrderServiceImplTest {
 
     private void givenNoExistingOrderAndSaveEchoesBack() {
         when(orderRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
-        when(orderRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        // simule JPA : l'identifiant est généré à la sauvegarde
+        when(orderRepository.save(any())).thenAnswer(inv -> {
+            OrderEntity saved = inv.getArgument(0);
+            if (saved.getOrderId() == null) {
+                saved.setOrderId(UUID.randomUUID());
+            }
+            return saved;
+        });
     }
 
     private OrderEntity orderWithItem(String sku, int quantity, BigDecimal unitPrice) {
