@@ -3,7 +3,7 @@ package com.barry.saga.retail.orderservice.kafka.listener;
 import com.barry.saga.retail.order.event.OrderConfirmedEvent;
 import com.barry.saga.retail.order.event.OrderFailedEvent;
 import com.barry.saga.retail.orderservice.entities.OrderEntity;
-import com.barry.saga.retail.orderservice.kafka.OrderEventProducer;
+import com.barry.saga.retail.orderservice.outbox.OrderEventPublisher;
 import com.barry.saga.retail.orderservice.repositories.OrderRepository;
 import com.barry.saga.retail.stock.event.StockRejectedEvent;
 import com.barry.saga.retail.stock.event.StockReservedEvent;
@@ -32,7 +32,7 @@ import static com.barry.saga.retail.orderservice.entities.enums.OrderStatus.STOC
 public class StockEventListener {
 
     private final OrderRepository orderRepository;
-    private final OrderEventProducer orderEventProducer;
+    private final OrderEventPublisher orderEventPublisher;
 
     /**
      * Réception de l'évènement StockReservedEvent.
@@ -59,7 +59,7 @@ public class StockEventListener {
             orderRepository.save(order);
             log.info("✅ Order {} status updated to CONFIRMED", orderId);
 
-            orderEventProducer.sendOrderConfirmed(toOrderConfirmedEvent(order));
+            orderEventPublisher.publishOrderConfirmed(toOrderConfirmedEvent(order));
             log.info("📡 OrderConfirmedEvent published for orderId={}", orderId);
         }, () -> log.warn("⚠ Order {} not found for StockReservedEvent — skipping", orderId));
 
@@ -85,7 +85,7 @@ public class StockEventListener {
             orderRepository.save(order);
             log.warn("❌ Order {} status updated to FAILED", orderId);
 
-            orderEventProducer.sendOrderFailed(toOrderFailedEvent(order, event.getReason().toString()));
+            orderEventPublisher.publishOrderFailed(toOrderFailedEvent(order, event.getReason().toString()));
             log.info("📡 OrderFailedEvent published for orderId={}", orderId);
         }, () -> log.warn("⚠ Order {} not found for StockRejectedEvent — skipping", orderId));
 
