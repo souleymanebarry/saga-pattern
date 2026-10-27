@@ -4,7 +4,7 @@ import com.barry.saga.retail.order.event.OrderConfirmedEvent;
 import com.barry.saga.retail.order.event.OrderFailedEvent;
 import com.barry.saga.retail.orderservice.entities.OrderEntity;
 import com.barry.saga.retail.orderservice.entities.enums.OrderStatus;
-import com.barry.saga.retail.orderservice.kafka.OrderEventProducer;
+import com.barry.saga.retail.orderservice.outbox.OrderEventPublisher;
 import com.barry.saga.retail.orderservice.repositories.OrderRepository;
 import com.barry.saga.retail.stock.event.StockRejectedEvent;
 import com.barry.saga.retail.stock.event.StockReservedEvent;
@@ -38,7 +38,7 @@ class StockEventListenerTest {
     private OrderRepository orderRepository;
 
     @Mock
-    private OrderEventProducer orderEventProducer;
+    private OrderEventPublisher orderEventPublisher;
 
     @Mock
     private Acknowledgment ack;
@@ -60,7 +60,7 @@ class StockEventListenerTest {
         verify(orderRepository, times(2)).save(order);
 
         ArgumentCaptor<OrderConfirmedEvent> captor = ArgumentCaptor.forClass(OrderConfirmedEvent.class);
-        verify(orderEventProducer).sendOrderConfirmed(captor.capture());
+        verify(orderEventPublisher).publishOrderConfirmed(captor.capture());
         assertThat(captor.getValue().getOrderId()).isEqualTo(orderId.toString());
         assertThat(captor.getValue().getCustomerId()).isEqualTo(CUSTOMER_ID);
         assertThat(captor.getValue().getTotalAmount()).isEqualByComparingTo("20.00");
@@ -77,7 +77,7 @@ class StockEventListenerTest {
         listener.onStockReserved(reserved(orderId), ack);
 
         verify(orderRepository, never()).save(any());
-        verifyNoInteractions(orderEventProducer);
+        verifyNoInteractions(orderEventPublisher);
         verify(ack).acknowledge();
     }
 
@@ -94,7 +94,7 @@ class StockEventListenerTest {
         verify(orderRepository).save(order);
 
         ArgumentCaptor<OrderFailedEvent> captor = ArgumentCaptor.forClass(OrderFailedEvent.class);
-        verify(orderEventProducer).sendOrderFailed(captor.capture());
+        verify(orderEventPublisher).publishOrderFailed(captor.capture());
         assertThat(captor.getValue().getOrderId()).isEqualTo(orderId.toString());
         assertThat(captor.getValue().getReason()).isEqualTo("out of stock");
 
@@ -110,7 +110,7 @@ class StockEventListenerTest {
         listener.onStockRejected(rejected(orderId, "x"), ack);
 
         verify(orderRepository, never()).save(any());
-        verifyNoInteractions(orderEventProducer);
+        verifyNoInteractions(orderEventPublisher);
         verify(ack).acknowledge();
     }
 

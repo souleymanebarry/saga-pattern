@@ -1,0 +1,35 @@
+{
+  "name": "stock-outbox-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "postgres",
+    "database.password": "1234",
+    "database.dbname": "stock_service_db",
+    "topic.prefix": "stock-cdc",
+
+    "plugin.name": "pgoutput",
+    "slot.name": "stock_outbox_slot",
+    "publication.name": "stock_outbox_pub",
+    "publication.autocreate.mode": "filtered",
+    "table.include.list": "public.outbox_event",
+    "tombstones.on.delete": "false",
+    "binary.handling.mode": "bytes",
+
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "io.debezium.converters.BinaryDataConverter",
+    "value.converter.delegate.converter.type": "org.apache.kafka.connect.json.JsonConverter",
+
+    "transforms": "outbox",
+    "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+    "transforms.outbox.table.field.event.id": "id",
+    "transforms.outbox.table.field.event.key": "aggregate_id",
+    "transforms.outbox.table.field.event.payload": "payload",
+    "transforms.outbox.route.by.field": "topic",
+    "transforms.outbox.route.topic.replacement": "${routedByValue}",
+    "transforms.outbox.table.fields.additional.placement": "event_type:header:eventType,schema_version:header:schemaVersion"
+  }
+}
