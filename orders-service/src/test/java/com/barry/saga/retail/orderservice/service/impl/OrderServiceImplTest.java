@@ -6,7 +6,7 @@ import com.barry.saga.retail.orderservice.entities.OrderEntity;
 import com.barry.saga.retail.orderservice.entities.OrderItemEntity;
 import com.barry.saga.retail.orderservice.entities.enums.OrderStatus;
 import com.barry.saga.retail.orderservice.exceptions.OrderNotFoundException;
-import com.barry.saga.retail.orderservice.kafka.OrderEventProducer;
+import com.barry.saga.retail.orderservice.outbox.OrderEventPublisher;
 import com.barry.saga.retail.orderservice.kafka.config.KafkaTopicsConfig;
 import com.barry.saga.retail.orderservice.repositories.OrderRepository;
 import com.barry.saga.retail.order.event.OrderPlacedEvent;
@@ -39,7 +39,7 @@ class OrderServiceImplTest {
     private static final BigDecimal PRICE_TEN = new BigDecimal("10.00");
 
     private OrderRepository orderRepository;
-    private OrderEventProducer orderEventProducer;
+    private OrderEventPublisher orderEventPublisher;
     private CatalogClient catalogClient;
 
     private OrderServiceImpl orderService;
@@ -47,14 +47,14 @@ class OrderServiceImplTest {
     @BeforeEach
     void setUp() {
         orderRepository = mock(OrderRepository.class);
-        orderEventProducer = mock(OrderEventProducer.class);
+        orderEventPublisher = mock(OrderEventPublisher.class);
         catalogClient = mock(CatalogClient.class);
 
         // real config to avoid NPE on logging properties.getTopics().getOrderPlaced()
         KafkaTopicsConfig properties = new KafkaTopicsConfig();
         properties.getTopics().setOrderPlaced("order.placed");
 
-        orderService = new OrderServiceImpl(orderRepository, orderEventProducer, properties, catalogClient);
+        orderService = new OrderServiceImpl(orderRepository, orderEventPublisher, properties, catalogClient);
     }
 
     // ----------------------------------------------------------------------
@@ -86,7 +86,7 @@ class OrderServiceImplTest {
 
         assertThat(result).isSameAs(existing);
         verify(orderRepository, never()).save(any());
-        verifyNoInteractions(orderEventProducer, catalogClient);
+        verifyNoInteractions(orderEventPublisher, catalogClient);
     }
 
     @Test
@@ -150,7 +150,7 @@ class OrderServiceImplTest {
         verify(orderRepository).save(any(OrderEntity.class));
 
         ArgumentCaptor<OrderPlacedEvent> captor = ArgumentCaptor.forClass(OrderPlacedEvent.class);
-        verify(orderEventProducer).sendOrderPlaced(captor.capture());
+        verify(orderEventPublisher).publishOrderPlaced(captor.capture());
         OrderPlacedEvent event = captor.getValue();
         assertThat(event.getCustomerId()).isEqualTo("cust-42");
         assertThat(event.getTotalAmount()).isEqualByComparingTo("20.00");
@@ -171,7 +171,7 @@ class OrderServiceImplTest {
                 .hasMessageContaining("UNKNOWN");
 
         verify(orderRepository, never()).save(any());
-        verifyNoInteractions(orderEventProducer);
+        verifyNoInteractions(orderEventPublisher);
     }
 
     @Test

@@ -5,7 +5,7 @@ import com.barry.saga.retail.orderservice.entities.OrderEntity;
 import com.barry.saga.retail.orderservice.entities.OrderItemEntity;
 import com.barry.saga.retail.orderservice.entities.enums.OrderStatus;
 import com.barry.saga.retail.orderservice.exceptions.OrderNotFoundException;
-import com.barry.saga.retail.orderservice.kafka.OrderEventProducer;
+import com.barry.saga.retail.orderservice.outbox.OrderEventPublisher;
 import com.barry.saga.retail.orderservice.kafka.config.KafkaTopicsConfig;
 import com.barry.saga.retail.orderservice.repositories.OrderRepository;
 import com.barry.saga.retail.orderservice.service.OrderService;
@@ -30,7 +30,7 @@ import java.util.UUID;
 public class OrderServiceImpl implements OrderService {
 
     private final OrderRepository orderRepository;
-    private final OrderEventProducer orderEventProducer;
+    private final OrderEventPublisher orderEventPublisher;
     private final KafkaTopicsConfig properties;
     private final CatalogClient catalogRestClient;
 
@@ -40,7 +40,7 @@ public class OrderServiceImpl implements OrderService {
 
     /**
      * Crée une commande avec validation métier complète,
-     * puis publie un événement OrderPlacedEvent dans Kafka.
+     * puis enregistre un événement OrderPlacedEvent dans l'outbox (publié sur Kafka par Debezium).
      */
 
     @Transactional
@@ -86,9 +86,10 @@ public class OrderServiceImpl implements OrderService {
 
         log.info("✔ Commande {} créée avec succès", savedOrder.getOrderId());
 
-        // Event Kafka
-        orderEventProducer.sendOrderPlaced(toOrderPlacedEvent(savedOrder));
-        log.info("📡 OrderPlacedEvent Send to Kafka for orderId: {} to  topic: '{}'",
+        // 5 Évènement écrit dans l'outbox, dans la même transaction que la commande
+        //   (Debezium le publiera ensuite sur Kafka)
+        orderEventPublisher.publishOrderPlaced(toOrderPlacedEvent(savedOrder));
+        log.info("📡 OrderPlacedEvent stored in outbox for orderId: {} (topic: '{}')",
                 savedOrder.getOrderId(), properties.getTopics().getOrderPlaced());
 
         return savedOrder;

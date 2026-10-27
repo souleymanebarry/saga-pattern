@@ -19,6 +19,6 @@ public interface OrderController {
   ResponseEntity<OrderResponse> createOrder(@RequestBody CreateOrderRequest request);
 
   @GetMapping("/{orderId}")
-  OrderResponse getOrderById(@PathVariable UUID orderId);
+  OrderResponse getOrderById(@PathVariable("orderId") UUID orderId);
 
 }
