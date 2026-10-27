@@ -88,6 +88,8 @@
 					<configuration>
 						<source>${java.version}</source>
 						<target>${java.version}</target>
+						<!-- Conserve les noms de paramètres dans le bytecode (requis par Spring 6.1+ pour @PathVariable / @RequestParam sans nom explicite) -->
+						<parameters>true</parameters>
 						<annotationProcessorPaths>
 							<path>
 								<groupId>org.projectlombok</groupId>
