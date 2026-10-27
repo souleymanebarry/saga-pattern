@@ -30,6 +30,10 @@ flowchart LR
 | **catalog-service** | Source de vérité produits (SKU, prix, nom) | **REST** uniquement |
 | **stock-service** *(externe)* | Réservation / rejet de stock | Produit/consomme Kafka |
 
+> 📤 Les services ne **produisent** jamais directement sur Kafka : leurs événements passent par
+> une table `outbox_event` publiée par Debezium (CDC). Les flèches « service → Kafka » de cette
+> page sont donc logiques. Parcours et schéma : [`outbox-cdc.md`](outbox-cdc.md).
+
 ---
 
 ## 2. Catalogue des événements (contrats Avro)
@@ -77,10 +81,10 @@ stateDiagram-v2
 
 | État départ | Déclencheur | État arrivée | Effet de bord | Where |
 | --- | --- | --- | --- | --- |
-| — | `POST /orders` validée + persistée | **PENDING** | publie `OrderPlacedEvent` → `order.placed` | `OrderServiceImpl.createOrder` |
+| — | `POST /orders` validée + persistée | **PENDING** | `OrderPlacedEvent` → outbox → `order.placed` | `OrderServiceImpl.createOrder` |
 | PENDING | reçoit `StockReservedEvent` | **STOCK_RESERVED** | save (réservation actée) | `StockEventListener.onStockReserved` |
-| STOCK_RESERVED | (immédiat, pas d'étape paiement) | **CONFIRMED** | publie `OrderConfirmedEvent` → `order.confirmed` | `StockEventListener.onStockReserved` |
-| PENDING | reçoit `StockRejectedEvent` | **FAILED** | publie `OrderFailedEvent` → `order.failed` | `StockEventListener.onStockRejected` |
+| STOCK_RESERVED | (immédiat, pas d'étape paiement) | **CONFIRMED** | `OrderConfirmedEvent` → outbox → `order.confirmed` | `StockEventListener.onStockReserved` |
+| PENDING | reçoit `StockRejectedEvent` | **FAILED** | `OrderFailedEvent` → outbox → `order.failed` | `StockEventListener.onStockRejected` |
 
 > ℹ️ `onStockReserved` enchaîne **deux** transitions dans la même transaction :
 > `STOCK_RESERVED` puis `CONFIRMED`. La réservation est **actée avant** la confirmation
@@ -110,23 +114,26 @@ sequenceDiagram
     participant C as Client
     participant OS as orders-service
     participant CAT as catalog-service
-    participant K as Kafka
+    participant K as Kafka (via outbox + Debezium)
     participant SS as stock-service (externe)
 
     C->>OS: POST /orders
     OS->>OS: validateOrderItems()
     OS->>CAT: GET /products/{sku} (REST)
     CAT-->>OS: prix + nom (source de vérité)
-    OS->>OS: status = PENDING, persist
-    OS->>K: OrderPlacedEvent (order.placed)
+    OS->>OS: status = PENDING, persist + outbox (1 transaction)
+    OS-)K: OrderPlacedEvent (order.placed)
     K->>SS: OrderPlacedEvent
-    SS->>SS: réserve le stock
-    SS->>K: StockReservedEvent (stock.reserved)
+    SS->>SS: réserve le stock + outbox (1 transaction)
+    SS-)K: StockReservedEvent (stock.reserved)
     K->>OS: StockReservedEvent
-    OS->>OS: status = STOCK_RESERVED puis CONFIRMED
-    OS->>K: OrderConfirmedEvent (order.confirmed)
+    OS->>OS: status = STOCK_RESERVED puis CONFIRMED + outbox
+    OS-)K: OrderConfirmedEvent (order.confirmed)
     OS->>K: ack (commit offset)
 ```
+
+Les flèches `-)` vers Kafka sont asynchrones : l'événement est écrit dans `outbox_event` et publié
+par Debezium après le commit. Parcours et schéma de communication : [`outbox-cdc.md`](outbox-cdc.md#parcours-complet).
 
 Chemin d'échec : `stock-service` publie `StockRejectedEvent` → `orders-service` passe la
 commande en `FAILED` et publie `OrderFailedEvent`.
@@ -156,6 +163,10 @@ les topics qu'il possède** (domaine `order`) : `order.placed`, `order.confirmed
 Les topics `stock.reserved` / `stock.rejected` sont la responsabilité du **stock-service**
 (leur producteur). orders-service ne fait que les consommer.
 
+Le broker tourne avec `auto.create.topics.enable=false` : si orders-service démarre avant
+stock-service, il attend la création des topics `stock.*` au lieu de les faire créer
+implicitement avec 1 partition.
+
 ---
 
 ## 7. Pourquoi catalog-service reste en REST
@@ -177,8 +188,9 @@ context distinct (le `stock-service`). Mettre un lookup produit sur Kafka serait
 
 ## 8. Limites connues / durcissements à venir
 
-- **Transactional outbox** : la publication Kafka se fait dans la transaction DB. En cas de
-  crash entre le commit DB et l'envoi Kafka, l'événement peut manquer. Un *outbox* fiabiliserait.
+- ~~**Transactional outbox**~~ : ✅ en place (orders-service et stock-service) — voir
+  [`outbox-cdc.md`](outbox-cdc.md). Reste à rendre orders-service idempotent face aux
+  redélivrances (at-least-once) et à purger `outbox_event`.
 - **Dead Letter Topic** : le `DefaultErrorHandler` se contente de logger les messages illisibles.
   Ajouter un `DeadLetterPublishingRecoverer` pour router les *poison pills*.
 - **Partage du contrat Avro inter-repos** : `retail-event-schema` n'est pas publié

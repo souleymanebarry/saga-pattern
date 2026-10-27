@@ -50,6 +50,8 @@ Il démontre :
 
 📖 **Détail complet du flux, des événements Avro et des transitions d'état :** [`docs/saga-flow.md`](docs/saga-flow.md)
 
+📤 **Publication fiable des événements (Transactional Outbox + Debezium CDC, schéma orders ↔ stock) :** [`docs/outbox-cdc.md`](docs/outbox-cdc.md)
+
 📡 **Communication inter-services**
 
 | Type          | Utilisation                      |
