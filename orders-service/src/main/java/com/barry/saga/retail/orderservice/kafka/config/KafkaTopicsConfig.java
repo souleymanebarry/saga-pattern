@@ -17,6 +17,10 @@ public class KafkaTopicsConfig {
     // Un seul broker en local (cf. docker-compose) → réplication = 1.
     private static final int PARTITIONS = 3;
     private static final short REPLICAS = 1;
+    private static final int DLT_PARTITIONS = 1;
+
+    /** Suffixe des Dead Letter Topics : stock.reserved → stock.reserved.dlt */
+    public static final String DLT_SUFFIX = ".dlt";
 
     private Topics topics = new Topics();
 
@@ -56,6 +60,30 @@ public class KafkaTopicsConfig {
     public NewTopic orderFailedTopic() {
         return TopicBuilder.name(topics.getOrderFailed())
                 .partitions(PARTITIONS)
+                .replicas(REPLICAS)
+                .build();
+    }
+
+    // ------------------------------------------------------------------
+    // Dead Letter Topics des topics CONSOMMÉS par orders-service.
+    // C'est le consommateur qui y écrit (DeadLetterPublishingRecoverer),
+    // il en est donc l'owner. 1 seule partition : volume faible, lecture
+    // manuelle, et les messages restent dans leur ordre d'arrivée
+    // (la partition d'origine est conservée dans le header kafka_dlt-original-partition).
+    // ------------------------------------------------------------------
+
+    @Bean
+    public NewTopic stockReservedDltTopic() {
+        return TopicBuilder.name(topics.getStockReserved() + DLT_SUFFIX)
+                .partitions(DLT_PARTITIONS)
+                .replicas(REPLICAS)
+                .build();
+    }
+
+    @Bean
+    public NewTopic stockRejectedDltTopic() {
+        return TopicBuilder.name(topics.getStockRejected() + DLT_SUFFIX)
+                .partitions(DLT_PARTITIONS)
                 .replicas(REPLICAS)
                 .build();
     }
