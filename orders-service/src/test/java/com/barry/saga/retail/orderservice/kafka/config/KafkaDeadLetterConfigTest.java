@@ -110,6 +110,8 @@ class KafkaDeadLetterConfigTest {
         assertThat(dlt.value()).isEqualTo(event);
         assertThat(header(dlt, KafkaHeaders.DLT_ORIGINAL_TOPIC)).isEqualTo(RETRYABLE_TOPIC);
         assertThat(header(dlt, KafkaHeaders.DLT_EXCEPTION_CAUSE_FQCN)).isEqualTo(IllegalStateException.class.getName());
+        assertThat(header(dlt, KafkaDeadLetterConfig.DELIVERY_ATTEMPTS_HEADER))
+                .isEqualTo(String.valueOf(KafkaDeadLetterConfig.MAX_RETRIES + 1));
         assertThat(deliveries).hasValue(KafkaDeadLetterConfig.MAX_RETRIES + 1);
         assertOffsetCommitted(RETRYABLE_TOPIC);
     }
@@ -126,6 +128,7 @@ class KafkaDeadLetterConfigTest {
 
         ConsumerRecord<String, Object> dlt = consumeDlt(NOT_RETRYABLE_TOPIC, avroDeserializerProps());
         assertThat(dlt.value()).isEqualTo(event);
+        assertThat(header(dlt, KafkaDeadLetterConfig.DELIVERY_ATTEMPTS_HEADER)).isEqualTo("1");
         assertThat(deliveries).hasValue(1);
         assertOffsetCommitted(NOT_RETRYABLE_TOPIC);
     }
@@ -142,6 +145,7 @@ class KafkaDeadLetterConfigTest {
                 Map.of(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class));
         assertThat((byte[]) dlt.value()).isEqualTo(garbage);
         assertThat(header(dlt, KafkaHeaders.DLT_EXCEPTION_FQCN)).isEqualTo(DeserializationException.class.getName());
+        assertThat(header(dlt, KafkaDeadLetterConfig.DELIVERY_ATTEMPTS_HEADER)).isEqualTo("1");
         assertThat(deliveries).hasValue(0);
         assertOffsetCommitted(POISON_PILL_TOPIC);
     }
