@@ -3,7 +3,6 @@ package com.barry.saga.retail.orderservice.kafka.config;
 import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
-import lombok.extern.log4j.Log4j2;
 
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -17,7 +16,7 @@ import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.listener.ContainerProperties;
-import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.listener.CommonErrorHandler;
 import org.springframework.kafka.support.serializer.ErrorHandlingDeserializer;
 
 import java.util.HashMap;
@@ -25,7 +24,6 @@ import java.util.Map;
 
 @Configuration
 @EnableKafka
-@Log4j2
 public class KafkaConsumerConfig {
 
     @Value("${spring.kafka.bootstrap-servers}")
@@ -68,28 +66,16 @@ public class KafkaConsumerConfig {
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, SpecificRecord> kafkaListenerContainerFactory() {
+    public ConcurrentKafkaListenerContainerFactory<String, SpecificRecord> kafkaListenerContainerFactory(
+            CommonErrorHandler kafkaErrorHandler) {
         ConcurrentKafkaListenerContainerFactory<String, SpecificRecord> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
 
         factory.setConsumerFactory(consumerFactory());
         factory.setConcurrency(1);
         factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.MANUAL);
-        factory.setCommonErrorHandler(commonErrorHandler());
+        factory.setCommonErrorHandler(kafkaErrorHandler);
 
         return factory;
-    }
-
-    @Bean
-    public DefaultErrorHandler commonErrorHandler() {
-        return new DefaultErrorHandler((record, exception) ->
-                log.error(
-                        "❌ Kafka error | topic={} | partition={} | offset={}",
-                        record.topic(),
-                        record.partition(),
-                        record.offset(),
-                        exception
-                )
-        );
     }
 }
