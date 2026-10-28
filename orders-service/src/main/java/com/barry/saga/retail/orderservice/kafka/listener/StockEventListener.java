@@ -85,7 +85,7 @@ public class StockEventListener {
             orderRepository.save(order);
             log.warn("❌ Order {} status updated to FAILED", orderId);
 
-            orderEventPublisher.publishOrderFailed(toOrderFailedEvent(order, event.getReason().toString()));
+            orderEventPublisher.publishOrderFailed(toOrderFailedEvent(order, event.getReason()));
             log.info("📡 OrderFailedEvent published for orderId={}", orderId);
         }, () -> log.warn("⚠ Order {} not found for StockRejectedEvent — skipping", orderId));
 
