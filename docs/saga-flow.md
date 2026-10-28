@@ -149,6 +149,10 @@ commande en `FAILED` et publie `OrderFailedEvent`.
 - **Ordre par commande** : clé Kafka = `orderId` → 1 partition par commande.
 - **Ack manuel** : consumers en `AckMode.MANUAL`. L'offset n'est commité qu'après traitement.
   Si la commande est introuvable, on `ack` quand même (rejouer n'aiderait pas → évite le *poison pill*).
+- **Dead Letter Topic** : un message en échec est rejoué 3 fois (backoff 1s → 2s → 4s) puis
+  publié sur `<topic>.dlt` et son offset est commité — la partition n'est jamais bloquée.
+  Messages illisibles (désérialisation) et `IllegalArgumentException` partent en DLT sans rejeu.
+  Détails : [§ 6 bis](#6-bis-dead-letter-topics-dlt).
 - **Validation avant enrichissement** : `validateOrderItems()` s'exécute **avant** l'appel
   REST catalog → évite un `NullPointerException` sur `items == null` et des appels inutiles.
 
@@ -166,6 +170,44 @@ Les topics `stock.reserved` / `stock.rejected` sont la responsabilité du **stoc
 Le broker tourne avec `auto.create.topics.enable=false` : si orders-service démarre avant
 stock-service, il attend la création des topics `stock.*` au lieu de les faire créer
 implicitement avec 1 partition.
+
+---
+
+## 6 bis. Dead Letter Topics (DLT)
+
+Chaque service crée et alimente les DLT **des topics qu'il consomme** (c'est le consommateur
+qui y écrit) :
+
+| Service | Topic consommé | DLT |
+| --- | --- | --- |
+| orders-service | `stock.reserved` | `stock.reserved.dlt` |
+| orders-service | `stock.rejected` | `stock.rejected.dlt` |
+| stock-service | `order.placed` | `order.placed.dlt` |
+
+Configuration : `KafkaDeadLetterConfig` (`DefaultErrorHandler` + `DeadLetterPublishingRecoverer`).
+
+| Cas | Rejeux | Contenu publié en DLT |
+| --- | --- | --- |
+| Exception métier/technique (ex. base indisponible) | 3 (1s, 2s, 4s) | l'événement Avro d'origine |
+| `IllegalArgumentException` (ex. `orderId` non UUID) | 0 | l'événement Avro d'origine |
+| Message illisible / *poison pill* (`DeserializationException`) | 0 | les octets bruts d'origine |
+
+- Même **clé** (`orderId`) que le message source. Les DLT ont **1 partition** et aucune
+  partition n'est imposée à l'envoi : volume faible, lecture manuelle, messages dans leur ordre
+  d'arrivée, et augmenter les partitions d'un topic source ne casse pas la DLT. La partition
+  d'origine reste dans le header `kafka_dlt-original-partition`.
+- Headers ajoutés par Spring pour le diagnostic et le rejeu : `kafka_dlt-original-topic`,
+  `kafka_dlt-original-partition`, `kafka_dlt-original-offset`, `kafka_dlt-exception-fqcn`,
+  `kafka_dlt-exception-message`, `kafka_dlt-exception-stacktrace`… On y ajoute
+  `dlt-delivery-attempts` : le nombre de tentatives avant l'envoi en DLT (`1` ou `4`), en texte
+  pour être lisible dans Conduktor.
+- La DLT est publiée **directement** sur Kafka (pas via l'outbox) : c'est un mécanisme
+  d'infrastructure, sans état métier à garder cohérent avec la base.
+- Les consumers restent en `AckMode.MANUAL` : l'offset du message envoyé en DLT est commité
+  après coup par le container (`ackAfterHandle`). `MANUAL_IMMEDIATE` est évité car il
+  commiterait l'offset **avant** le commit de la transaction JPA du listener.
+- Pas de rejeu automatique depuis la DLT : on corrige la cause, puis on republie le message
+  sur le topic d'origine (ex. via Conduktor).
 
 ---
 
@@ -191,8 +233,8 @@ context distinct (le `stock-service`). Mettre un lookup produit sur Kafka serait
 - ~~**Transactional outbox**~~ : ✅ en place (orders-service et stock-service) — voir
   [`outbox-cdc.md`](outbox-cdc.md). Reste à rendre orders-service idempotent face aux
   redélivrances (at-least-once) et à purger `outbox_event`.
-- **Dead Letter Topic** : le `DefaultErrorHandler` se contente de logger les messages illisibles.
-  Ajouter un `DeadLetterPublishingRecoverer` pour router les *poison pills*.
+- ~~**Dead Letter Topic**~~ : ✅ en place — voir [§ 6 bis](#6-bis-dead-letter-topics-dlt).
+  Reste à outiller le rejeu depuis la DLT et à alerter sur son volume.
 - **Partage du contrat Avro inter-repos** : `retail-event-schema` n'est pas publié
   (install local). Pour éviter le *drift* de schéma avec le stock-service externe, publier le
   module dans un repo Maven partagé **ou** traiter le Schema Registry comme source de vérité.
