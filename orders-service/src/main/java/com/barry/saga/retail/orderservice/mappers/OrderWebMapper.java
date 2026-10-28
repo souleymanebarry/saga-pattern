@@ -17,7 +17,6 @@ import java.time.LocalDateTime;
  * Mapper Web responsable de la conversion entre :
  * - DTOs reçus depuis l’API
  * - Entités JPA utilisées dans le domaine
- *
  * Ce mapper ne doit pas être utilisé dans le service métier.
  */
 
