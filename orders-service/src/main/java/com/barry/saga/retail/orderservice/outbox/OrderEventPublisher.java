@@ -19,7 +19,6 @@ import java.util.UUID;
 
 /**
  * Publication des évènements "order" via le pattern Transactional Outbox.
- *
  * Aucun appel Kafka ici : l'évènement est sérialisé en Avro puis inséré dans
  * la table outbox_event, dans la transaction de l'appelant (MANDATORY). Soit
  * la commande ET l'évènement sont commités, soit aucun des deux. Debezium lit
