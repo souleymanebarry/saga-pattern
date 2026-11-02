@@ -1,0 +1,530 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Kafka SASL_SSL Saga Retail</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout : une colonne de lecture, les schémas débordent en largeur dans leur propre zone défilante */
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --line: #d7dce2;
+  --fg: #1c232c;
+  --muted: #5b6672;
+  --accent: #2c6bcf;
+  --topic-fill: #e7f0fc;
+  --arrow: #9aa3ae;
+  --code-bg: #eef1f5;
+  --warn-bg: #fff6e5;
+  --warn-line: #e3b25a;
+  --font-display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11151a; --surface: #192028; --line: #303a45; --fg: #e3e8ee; --muted: #9ba6b3;
+    --accent: #6aa5f5; --topic-fill: #15283f; --arrow: #66717e; --code-bg: #1f2731;
+    --warn-bg: #2b2414; --warn-line: #a9822f; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11151a; --surface: #192028; --line: #303a45; --fg: #e3e8ee; --muted: #9ba6b3;
+  --accent: #6aa5f5; --topic-fill: #15283f; --arrow: #66717e; --code-bg: #1f2731;
+  --warn-bg: #2b2414; --warn-line: #a9822f; color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid;
+  gap: 48px;
+}
+.prose { max-width: 70ch; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.35rem; font-weight: 600; }
+h3 { font-size: 1.05rem; font-weight: 600; }
+p { margin: 0; }
+.eyebrow {
+  font-family: var(--font-mono); font-size: 0.75rem; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--accent); margin-bottom: 8px;
+}
+.lead { color: var(--muted); font-size: 1.05rem; margin-top: 12px; }
+section { display: grid; gap: 16px; }
+code, pre { font-family: var(--font-mono); font-size: 0.85em; }
+:not(pre) > code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre {
+  background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: 14px 16px; margin: 0; overflow-x: auto; line-height: 1.5;
+}
+
+/* Trois piliers */
+.pillars { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.pillar { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 4px; align-content: start; }
+.pillar .k { font-family: var(--font-mono); font-size: 0.8rem; color: var(--accent); }
+.pillar p { color: var(--muted); font-size: 0.92rem; }
+
+/* Schémas */
+.figure { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: grid; gap: 12px; min-width: 0; }
+.figure .cap { color: var(--muted); font-size: 0.9rem; }
+.scroll { overflow-x: auto; }
+.scroll svg { display: block; width: 100%; min-width: 760px; height: auto; }
+svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+svg .frame { fill: none; stroke: var(--line); stroke-width: 1.5; }
+svg .topic { fill: var(--topic-fill); stroke: var(--accent); stroke-width: 2; }
+svg .dlt { fill: var(--topic-fill); stroke: var(--accent); stroke-width: 1.5; stroke-dasharray: 6 4; }
+svg .pill { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+svg .t { fill: var(--fg); font-family: var(--font-body); font-size: 15px; font-weight: 600; }
+svg .s { fill: var(--muted); font-family: var(--font-body); font-size: 12.5px; }
+svg .m { fill: var(--muted); font-family: var(--font-mono); font-size: 12px; }
+svg .l { fill: var(--muted); font-family: var(--font-body); font-size: 12.5px; }
+svg .arr { stroke: var(--arrow); stroke-width: 1.5; fill: none; }
+svg .arr.dash { stroke-dasharray: 5 4; }
+svg .head { fill: var(--arrow); }
+
+/* Étapes */
+.steps { display: grid; gap: 16px; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 4px 16px; }
+.step .n { font-family: var(--font-display); font-weight: 700; font-size: 1.4rem; color: var(--accent); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.step .body { display: grid; gap: 10px; min-width: 0; }
+.step ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.note { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px; padding: 10px 14px; font-size: 0.92rem; }
+
+/* Tableaux */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; min-width: 640px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 500; }
+tr:last-child td { border-bottom: 0; }
+td code { white-space: nowrap; }
+
+.out { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.out div { border: 1px dashed var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 4px; align-content: start; }
+.out p { color: var(--muted); font-size: 0.9rem; }
+
+@media (max-width: 480px) {
+  h1 { font-size: 1.6rem; }
+  .step { grid-template-columns: minmax(0, 1fr); }
+}
+</style>
+
+<div class="page">
+
+  <header class="prose">
+    <div class="eyebrow">saga-pattern · feature/kafka-security</div>
+    <h1>Sécuriser Kafka entre orders-service et stock-service</h1>
+    <p class="lead">Plan de mise en place de SASL_SSL avec SCRAM-SHA-512 et des ACL par service, pour l'infra docker-compose actuelle (cp-kafka 7.6, ZooKeeper, Debezium 2.7).</p>
+  </header>
+
+  <section>
+    <h2>Ce qu'on met en place</h2>
+    <div class="pillars">
+      <div class="pillar"><span class="k">TLS</span><h3>Chiffrer</h3><p>Le trafic client ↔ broker est chiffré. Le client vérifie le certificat du broker.</p></div>
+      <div class="pillar"><span class="k">SASL SCRAM-SHA-512</span><h3>Authentifier</h3><p>Chaque service se connecte avec son propre compte : <code>User:orders-service</code>, <code>User:stock-service</code>…</p></div>
+      <div class="pillar"><span class="k">ACL</span><h3>Autoriser</h3><p>Chaque compte n'a accès qu'à ses topics et à son groupe de consommateurs. Tout le reste est refusé.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Aujourd'hui : la saga via Kafka</h2>
+    <div class="figure">
+      <p class="cap">Les services n'écrivent jamais directement dans Kafka : Debezium publie le contenu des tables outbox. En bleu : topics Kafka. En pointillés : Dead Letter Topics. Tout circule en PLAINTEXT, sans authentification.</p>
+      <div class="scroll">
+        <svg viewBox="0 0 1000 680" role="img" aria-label="Flux de la saga entre orders-service, stock-service, Debezium et les topics Kafka">
+          <defs>
+            <marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker>
+          </defs>
+
+          <!-- Ligne 1 : services -->
+          <rect class="box" x="20" y="20" width="300" height="60" rx="10"/>
+          <text class="t" x="170" y="45" text-anchor="middle">orders-service</text>
+          <text class="s" x="170" y="66" text-anchor="middle">API REST /orders · crée la commande</text>
+
+          <rect class="box" x="400" y="20" width="200" height="60" rx="10"/>
+          <text class="t" x="500" y="45" text-anchor="middle">catalog-service</text>
+          <text class="s" x="500" y="66" text-anchor="middle">prix et nom des produits</text>
+
+          <rect class="box" x="680" y="20" width="300" height="60" rx="10"/>
+          <text class="t" x="830" y="45" text-anchor="middle">stock-service</text>
+          <text class="s" x="830" y="66" text-anchor="middle">réserve le stock (tout ou rien)</text>
+
+          <line class="arr" x1="320" y1="50" x2="396" y2="50" marker-end="url(#ah1)"/>
+          <text class="l" x="358" y="42" text-anchor="middle">REST</text>
+
+          <!-- Ligne 2 : bases -->
+          <rect class="box" x="20" y="130" width="300" height="56" rx="10"/>
+          <text class="t" x="170" y="154" text-anchor="middle">order_service_db</text>
+          <text class="s" x="170" y="174" text-anchor="middle">orders + outbox_event</text>
+
+          <rect class="box" x="680" y="130" width="300" height="56" rx="10"/>
+          <text class="t" x="830" y="154" text-anchor="middle">stock_service_db</text>
+          <text class="s" x="830" y="174" text-anchor="middle">stock + outbox_event</text>
+
+          <line class="arr" x1="170" y1="80" x2="170" y2="126" marker-end="url(#ah1)"/>
+          <text class="l" x="180" y="108">1 transaction</text>
+          <line class="arr" x1="830" y1="80" x2="830" y2="126" marker-end="url(#ah1)"/>
+          <text class="l" x="840" y="108">1 transaction</text>
+
+          <!-- Ligne 3 : Debezium -->
+          <rect class="box" x="20" y="250" width="960" height="60" rx="10"/>
+          <text class="t" x="500" y="275" text-anchor="middle">Kafka Connect · Debezium</text>
+          <text class="s" x="500" y="296" text-anchor="middle">lit outbox_event dans le WAL Postgres · orders-outbox-connector → order.* · stock-outbox-connector → stock.*</text>
+
+          <line class="arr" x1="170" y1="186" x2="170" y2="246" marker-end="url(#ah1)"/>
+          <text class="l" x="180" y="222">CDC</text>
+          <line class="arr" x1="830" y1="186" x2="830" y2="246" marker-end="url(#ah1)"/>
+          <text class="l" x="840" y="222">CDC</text>
+
+          <!-- Debezium → topics -->
+          <line class="arr" x1="108" y1="310" x2="108" y2="386" marker-end="url(#ah1)"/>
+          <line class="arr" x1="304" y1="310" x2="304" y2="386" marker-end="url(#ah1)"/>
+          <line class="arr" x1="500" y1="310" x2="500" y2="386" marker-end="url(#ah1)"/>
+          <line class="arr" x1="696" y1="310" x2="696" y2="386" marker-end="url(#ah1)"/>
+          <line class="arr" x1="892" y1="310" x2="892" y2="386" marker-end="url(#ah1)"/>
+          <text class="l" x="402" y="354" text-anchor="middle">publie (Avro)</text>
+
+          <!-- Ligne 4 : topics -->
+          <rect class="topic" x="20" y="390" width="176" height="56" rx="10"/>
+          <text class="t" x="108" y="414" text-anchor="middle">order.placed</text>
+          <text class="s" x="108" y="434" text-anchor="middle">commande créée</text>
+
+          <rect class="topic" x="216" y="390" width="176" height="56" rx="10"/>
+          <text class="t" x="304" y="414" text-anchor="middle">order.confirmed</text>
+          <text class="s" x="304" y="434" text-anchor="middle">commande confirmée</text>
+
+          <rect class="topic" x="412" y="390" width="176" height="56" rx="10"/>
+          <text class="t" x="500" y="414" text-anchor="middle">order.failed</text>
+          <text class="s" x="500" y="434" text-anchor="middle">commande en échec</text>
+
+          <rect class="topic" x="608" y="390" width="176" height="56" rx="10"/>
+          <text class="t" x="696" y="414" text-anchor="middle">stock.reserved</text>
+          <text class="s" x="696" y="434" text-anchor="middle">stock réservé</text>
+
+          <rect class="topic" x="804" y="390" width="176" height="56" rx="10"/>
+          <text class="t" x="892" y="414" text-anchor="middle">stock.rejected</text>
+          <text class="s" x="892" y="434" text-anchor="middle">stock insuffisant</text>
+
+          <!-- topics → consommateurs -->
+          <line class="arr" x1="108" y1="446" x2="108" y2="496" marker-end="url(#ah1)"/>
+          <line class="arr" x1="304" y1="446" x2="304" y2="496" marker-end="url(#ah1)"/>
+          <line class="arr" x1="500" y1="446" x2="500" y2="496" marker-end="url(#ah1)"/>
+          <line class="arr" x1="696" y1="446" x2="696" y2="496" marker-end="url(#ah1)"/>
+          <line class="arr" x1="892" y1="446" x2="892" y2="496" marker-end="url(#ah1)"/>
+          <text class="l" x="118" y="476">consomme</text>
+          <text class="l" x="706" y="476">consomme</text>
+
+          <!-- Ligne 5 : consommateurs -->
+          <rect class="box" x="20" y="500" width="176" height="56" rx="10"/>
+          <text class="t" x="108" y="524" text-anchor="middle">stock-service</text>
+          <text class="m" x="108" y="544" text-anchor="middle">StockOrderListener</text>
+
+          <rect class="box" x="216" y="500" width="372" height="56" rx="10"/>
+          <text class="t" x="402" y="524" text-anchor="middle">Consommateurs aval</text>
+          <text class="s" x="402" y="544" text-anchor="middle">absents du code (notification, facturation…)</text>
+
+          <rect class="box" x="608" y="500" width="372" height="56" rx="10"/>
+          <text class="t" x="794" y="524" text-anchor="middle">orders-service</text>
+          <text class="s" x="794" y="544" text-anchor="middle">StockEventListener · passe la commande en CONFIRMED ou FAILED</text>
+
+          <!-- consommateurs → DLT -->
+          <line class="arr dash" x1="108" y1="556" x2="108" y2="606" marker-end="url(#ah1)"/>
+          <line class="arr dash" x1="696" y1="556" x2="696" y2="606" marker-end="url(#ah1)"/>
+          <line class="arr dash" x1="892" y1="556" x2="892" y2="606" marker-end="url(#ah1)"/>
+          <text class="l" x="118" y="586">échec</text>
+          <text class="l" x="706" y="586">échec</text>
+
+          <!-- Ligne 6 : DLT -->
+          <rect class="dlt" x="20" y="610" width="176" height="52" rx="10"/>
+          <text class="t" x="108" y="633" text-anchor="middle">order.placed.dlt</text>
+          <text class="s" x="108" y="652" text-anchor="middle">publiée par stock-service</text>
+
+          <rect class="dlt" x="608" y="610" width="176" height="52" rx="10"/>
+          <text class="t" x="696" y="633" text-anchor="middle">stock.reserved.dlt</text>
+          <text class="s" x="696" y="652" text-anchor="middle">publiée par orders-service</text>
+
+          <rect class="dlt" x="804" y="610" width="176" height="52" rx="10"/>
+          <text class="t" x="892" y="633" text-anchor="middle">stock.rejected.dlt</text>
+          <text class="s" x="892" y="652" text-anchor="middle">publiée par orders-service</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Cible : chaque client s'authentifie, le broker autorise</h2>
+    <div class="figure">
+      <p class="cap">Tous les clients Kafka passent en SASL_SSL avec leur propre compte. Le broker applique trois contrôles dans l'ordre, puis donne accès aux topics selon les ACL.</p>
+      <div class="scroll">
+        <svg viewBox="0 0 1000 600" role="img" aria-label="Architecture cible : cinq clients Kafka authentifiés en SASL_SSL auprès du broker, qui applique TLS, SCRAM et ACL">
+          <defs>
+            <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="head"/></marker>
+          </defs>
+
+          <!-- Clients -->
+          <rect class="box" x="20" y="20" width="176" height="64" rx="10"/>
+          <text class="t" x="108" y="46" text-anchor="middle">orders-service</text>
+          <text class="m" x="108" y="68" text-anchor="middle">User:orders-service</text>
+
+          <rect class="box" x="216" y="20" width="176" height="64" rx="10"/>
+          <text class="t" x="304" y="46" text-anchor="middle">stock-service</text>
+          <text class="m" x="304" y="68" text-anchor="middle">User:stock-service</text>
+
+          <rect class="box" x="412" y="20" width="176" height="64" rx="10"/>
+          <text class="t" x="500" y="46" text-anchor="middle">kafka-connect</text>
+          <text class="m" x="500" y="68" text-anchor="middle">User:kafka-connect</text>
+
+          <rect class="box" x="608" y="20" width="176" height="64" rx="10"/>
+          <text class="t" x="696" y="46" text-anchor="middle">schema-registry</text>
+          <text class="m" x="696" y="68" text-anchor="middle">User:schema-registry</text>
+
+          <rect class="box" x="804" y="20" width="176" height="64" rx="10"/>
+          <text class="t" x="892" y="46" text-anchor="middle">conduktor</text>
+          <text class="m" x="892" y="68" text-anchor="middle">User:conduktor</text>
+
+          <line class="arr" x1="108" y1="84" x2="108" y2="166" marker-end="url(#ah2)"/>
+          <line class="arr" x1="304" y1="84" x2="304" y2="166" marker-end="url(#ah2)"/>
+          <line class="arr" x1="500" y1="84" x2="500" y2="166" marker-end="url(#ah2)"/>
+          <line class="arr" x1="696" y1="84" x2="696" y2="166" marker-end="url(#ah2)"/>
+          <line class="arr" x1="892" y1="84" x2="892" y2="166" marker-end="url(#ah2)"/>
+          <rect class="pill" x="370" y="112" width="260" height="26" rx="13"/>
+          <text class="l" x="500" y="130" text-anchor="middle">SASL_SSL · TLS + SCRAM-SHA-512</text>
+
+          <!-- Broker -->
+          <rect class="frame" x="20" y="170" width="960" height="200" rx="12"/>
+          <text class="t" x="40" y="198">broker-kafka</text>
+          <text class="s" x="40" y="218">listeners INTERNAL :29092 et EXTERNAL :9092, tous deux en SASL_SSL</text>
+
+          <rect class="box" x="40" y="240" width="296" height="108" rx="10"/>
+          <text class="t" x="188" y="270" text-anchor="middle">1. TLS</text>
+          <text class="s" x="188" y="294" text-anchor="middle">chiffre le trafic</text>
+          <text class="s" x="188" y="314" text-anchor="middle">prouve l'identité du broker (certificat)</text>
+
+          <rect class="box" x="352" y="240" width="296" height="108" rx="10"/>
+          <text class="t" x="500" y="270" text-anchor="middle">2. SASL SCRAM-SHA-512</text>
+          <text class="s" x="500" y="294" text-anchor="middle">authentifie le client</text>
+          <text class="m" x="500" y="314" text-anchor="middle">→ principal User:orders-service</text>
+
+          <rect class="box" x="664" y="240" width="296" height="108" rx="10"/>
+          <text class="t" x="812" y="270" text-anchor="middle">3. ACL</text>
+          <text class="s" x="812" y="294" text-anchor="middle">autorise ou refuse</text>
+          <text class="s" x="812" y="314" text-anchor="middle">par topic et par groupe de consommateurs</text>
+
+          <line class="arr" x1="336" y1="294" x2="350" y2="294" marker-end="url(#ah2)"/>
+          <line class="arr" x1="648" y1="294" x2="662" y2="294" marker-end="url(#ah2)"/>
+
+          <!-- Broker → topics -->
+          <line class="arr" x1="108" y1="370" x2="108" y2="436" marker-end="url(#ah2)"/>
+          <line class="arr" x1="304" y1="370" x2="304" y2="436" marker-end="url(#ah2)"/>
+          <line class="arr" x1="500" y1="370" x2="500" y2="436" marker-end="url(#ah2)"/>
+          <line class="arr" x1="696" y1="370" x2="696" y2="436" marker-end="url(#ah2)"/>
+          <line class="arr" x1="892" y1="370" x2="892" y2="436" marker-end="url(#ah2)"/>
+          <rect class="pill" x="410" y="390" width="180" height="26" rx="13"/>
+          <text class="l" x="500" y="408" text-anchor="middle">accès selon les ACL</text>
+
+          <!-- Topics -->
+          <rect class="topic" x="20" y="440" width="176" height="56" rx="10"/>
+          <text class="t" x="108" y="464" text-anchor="middle">order.*</text>
+          <text class="s" x="108" y="484" text-anchor="middle">placed · confirmed · failed</text>
+
+          <rect class="topic" x="216" y="440" width="176" height="56" rx="10"/>
+          <text class="t" x="304" y="464" text-anchor="middle">stock.*</text>
+          <text class="s" x="304" y="484" text-anchor="middle">reserved · rejected</text>
+
+          <rect class="dlt" x="412" y="440" width="176" height="56" rx="10"/>
+          <text class="t" x="500" y="464" text-anchor="middle">*.dlt</text>
+          <text class="s" x="500" y="484" text-anchor="middle">Dead Letter Topics</text>
+
+          <rect class="topic" x="608" y="440" width="176" height="56" rx="10"/>
+          <text class="t" x="696" y="464" text-anchor="middle">_connect-*</text>
+          <text class="s" x="696" y="484" text-anchor="middle">état de Kafka Connect</text>
+
+          <rect class="topic" x="804" y="440" width="176" height="56" rx="10"/>
+          <text class="t" x="892" y="464" text-anchor="middle">_schemas</text>
+          <text class="s" x="892" y="484" text-anchor="middle">schémas Avro</text>
+
+          <!-- Socle -->
+          <rect class="box" x="20" y="530" width="472" height="52" rx="10"/>
+          <text class="t" x="256" y="552" text-anchor="middle">PKI locale</text>
+          <text class="s" x="256" y="571" text-anchor="middle">CA auto-signée → keystore du broker, truststore des clients</text>
+
+          <rect class="box" x="508" y="530" width="472" height="52" rx="10"/>
+          <text class="t" x="744" y="552" text-anchor="middle">Secrets</text>
+          <text class="s" x="744" y="571" text-anchor="middle">.env non commité en local · Vault ou secrets Kubernetes en prod</text>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Plan de mise en place</h2>
+    <p class="prose">Les étapes sont dans l'ordre d'exécution. Les valeurs des variables d'environnement sont à valider pendant la mise en place.</p>
+
+    <div class="steps">
+
+      <article class="step">
+        <div class="n">1</div>
+        <div class="body">
+          <h3>Créer la PKI locale</h3>
+          <p>Un script <code>infra/security/gen-certs.sh</code> génère une CA auto-signée, le keystore du broker et un truststore commun aux clients.</p>
+          <ul>
+            <li>Le certificat du broker doit couvrir <code>broker-kafka</code> (clients Docker) <strong>et</strong> <code>localhost</code> (orders-service et stock-service lancés depuis IntelliJ), dans le SAN.</li>
+            <li>Les fichiers générés vont dans <code>infra/security/secrets/</code>, ajouté au <code>.gitignore</code>.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="n">2</div>
+        <div class="body">
+          <h3>Passer le broker en SASL_SSL</h3>
+          <p>Dans <code>docker-compose.yml</code>, service <code>kafka</code> :</p>
+<pre>KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SASL_SSL,EXTERNAL:SASL_SSL
+KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
+KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: SCRAM-SHA-512
+KAFKA_SSL_KEYSTORE_FILENAME: broker.keystore.p12
+KAFKA_SSL_KEYSTORE_CREDENTIALS: keystore_creds
+KAFKA_SSL_KEY_CREDENTIALS: key_creds
+KAFKA_SSL_TRUSTSTORE_FILENAME: truststore.p12
+KAFKA_SSL_TRUSTSTORE_CREDENTIALS: truststore_creds
+KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/secrets/broker_jaas.conf
+# volume : ./infra/security/secrets:/etc/kafka/secrets:ro</pre>
+          <p class="note">Couper PLAINTEXT casse tous les clients d'un coup. Variante plus douce : ajouter des listeners SASL_SSL sur de nouveaux ports à côté des listeners PLAINTEXT, migrer les clients un par un, puis supprimer PLAINTEXT.</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="n">3</div>
+        <div class="body">
+          <h3>Créer un compte SCRAM par client</h3>
+          <p>Un compte <code>admin</code> (super-utilisateur, utilisé aussi entre brokers), puis un compte par client : <code>orders-service</code>, <code>stock-service</code>, <code>kafka-connect</code>, <code>schema-registry</code>, <code>conduktor</code>.</p>
+<pre>kafka-configs --zookeeper zookeeper:2181 --alter --entity-type users --entity-name orders-service --add-config 'SCRAM-SHA-512=[password=${ORDERS_KAFKA_PASSWORD}]'</pre>
+          <p>Avec ZooKeeper, les comptes sont stockés dans ZooKeeper : on peut donc créer <code>admin</code> avant le démarrage du broker. Un script <code>infra/security/create-users.sh</code> les crée tous.</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="n">4</div>
+        <div class="body">
+          <h3>Activer les ACL</h3>
+<pre>KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.authorizer.AclAuthorizer
+KAFKA_SUPER_USERS: User:admin
+KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"</pre>
+          <p>Par défaut, tout est refusé. Les droits de chaque compte sont donnés dans le tableau ci-dessous, par un script <code>infra/security/create-acls.sh</code> :</p>
+<pre>kafka-acls --bootstrap-server broker-kafka:29092 --command-config /etc/kafka/secrets/admin.properties --add --allow-principal User:orders-service --operation Read --topic stock.reserved --topic stock.rejected --group orders-service-group</pre>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="n">5</div>
+        <div class="body">
+          <h3>Configurer orders-service et stock-service</h3>
+          <p>Dans <code>application.yml</code>, le mot de passe venant d'une variable d'environnement :</p>
+<pre>spring:
+  kafka:
+    security:
+      protocol: SASL_SSL
+    ssl:
+      trust-store-location: file:${KAFKA_TRUSTSTORE}
+      trust-store-password: ${KAFKA_TRUSTSTORE_PASSWORD}
+    properties:
+      sasl.mechanism: SCRAM-SHA-512
+      sasl.jaas.config: >-
+        org.apache.kafka.common.security.scram.ScramLoginModule required
+        username="orders-service" password="${KAFKA_PASSWORD}";</pre>
+          <p class="note"><strong>Seul changement de code.</strong> <code>KafkaConsumerConfig</code> et <code>KafkaDeadLetterConfig</code> construisent leurs propriétés à la main à partir de <code>bootstrap-servers</code> : ils n'héritent donc pas de <code>spring.kafka.security.*</code>. Les faire partir de <code>KafkaProperties.buildConsumerProperties(…)</code> et <code>buildProducerProperties(…)</code>, dans les deux services. Sinon, les consumers et les producers DLT resteront en PLAINTEXT et seront rejetés.</p>
+          <p>Les tests <code>@EmbeddedKafka</code> ne changent pas : ils tournent sur un broker embarqué sans sécurité.</p>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="n">6</div>
+        <div class="body">
+          <h3>Configurer Kafka Connect, Schema Registry et Conduktor</h3>
+          <ul>
+            <li><strong>Kafka Connect (Debezium)</strong> : la même config SASL_SSL trois fois, pour le worker, pour son producer (qui publie les événements outbox) et pour son consumer : <code>CONNECT_SECURITY_PROTOCOL</code>, <code>CONNECT_PRODUCER_SECURITY_PROTOCOL</code>, <code>CONNECT_CONSUMER_SECURITY_PROTOCOL</code>, et les <code>SASL_*</code> correspondants.</li>
+            <li><strong>Schema Registry</strong> : <code>SCHEMA_REGISTRY_KAFKASTORE_SECURITY_PROTOCOL: SASL_SSL</code>, le mécanisme, le JAAS et le truststore.</li>
+            <li><strong>Conduktor</strong> : <code>CDK_CLUSTERS_0_PROPERTIES</code> avec <code>security.protocol</code>, <code>sasl.mechanism</code> et <code>sasl.jaas.config</code>.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="n">7</div>
+        <div class="body">
+          <h3>Sortir les secrets du code</h3>
+          <ul>
+            <li>En local : un fichier <code>.env</code> non commité, lu par docker-compose et par IntelliJ, plus un <code>.env.example</code> commité avec des valeurs factices.</li>
+            <li>En prod : Vault ou les secrets Kubernetes, avec une rotation des mots de passe.</li>
+          </ul>
+        </div>
+      </article>
+
+      <article class="step">
+        <div class="n">8</div>
+        <div class="body">
+          <h3>Vérifier</h3>
+          <ul>
+            <li>Une connexion sans identifiants est refusée (<code>SaslAuthenticationException</code>).</li>
+            <li>orders-service ne peut pas écrire dans <code>order.placed</code> (<code>TopicAuthorizationException</code>) : seul Debezium le peut.</li>
+            <li>La saga complète passe : <code>POST /orders</code> → <code>order.placed</code> → <code>stock.reserved</code> → commande en <code>CONFIRMED</code>.</li>
+            <li>Les tâches Debezium sont en <code>RUNNING</code>, et le poison pill de <code>docs/dlt-testing.md</code> arrive toujours en DLT.</li>
+            <li>Conduktor affiche les topics avec son propre compte.</li>
+          </ul>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>ACL par compte</h2>
+    <p class="prose">Le principe du moindre privilège : chaque compte n'a que ce dont il a besoin. <code>Read</code> et <code>Write</code> donnent aussi <code>Describe</code>.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Compte</th><th>Ressource</th><th>Opérations</th><th>Pourquoi</th></tr>
+        </thead>
+        <tbody>
+          <tr><td rowspan="3"><code>User:orders-service</code></td><td>topics <code>stock.reserved</code>, <code>stock.rejected</code></td><td>Read</td><td>StockEventListener</td></tr>
+          <tr><td>topics <code>stock.reserved.dlt</code>, <code>stock.rejected.dlt</code></td><td>Write</td><td>publication en DLT</td></tr>
+          <tr><td>groupe <code>orders-service-group</code></td><td>Read</td><td>commit des offsets</td></tr>
+          <tr><td rowspan="3"><code>User:stock-service</code></td><td>topic <code>order.placed</code></td><td>Read</td><td>StockOrderListener</td></tr>
+          <tr><td>topic <code>order.placed.dlt</code></td><td>Write</td><td>publication en DLT</td></tr>
+          <tr><td>groupe <code>stock-service-group</code></td><td>Read</td><td>commit des offsets</td></tr>
+          <tr><td rowspan="3"><code>User:kafka-connect</code></td><td>topics <code>order.placed</code>, <code>order.confirmed</code>, <code>order.failed</code>, <code>stock.reserved</code>, <code>stock.rejected</code></td><td>Write</td><td>publication des outbox</td></tr>
+          <tr><td>topics <code>_connect-configs</code>, <code>_connect-offsets</code>, <code>_connect-status</code></td><td>All</td><td>état interne de Connect</td></tr>
+          <tr><td>groupe <code>kafka-connect-group</code></td><td>Read</td><td>coordination des workers</td></tr>
+          <tr><td rowspan="2"><code>User:schema-registry</code></td><td>topic <code>_schemas</code></td><td>All</td><td>stockage des schémas</td></tr>
+          <tr><td>groupe <code>schema-registry</code></td><td>Read</td><td>élection du leader</td></tr>
+          <tr><td><code>User:conduktor</code></td><td>tous les topics et groupes</td><td>Read, Describe</td><td>consultation, en lecture seule</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Les services créent aujourd'hui leurs topics au démarrage (<code>NewTopic</code> dans <code>KafkaTopicsConfig</code>). Deux options : leur donner <code>Create</code> sur leurs topics, ou, comme en prod, faire créer les topics par <code>admin</code> dans un script et retirer ce droit aux services. La seconde est recommandée.</p>
+  </section>
+
+  <section>
+    <h2>Hors périmètre de SASL/SSL</h2>
+    <div class="out">
+      <div><h3>REST orders → catalog</h3><p>HTTPS, plus un jeton OAuth2 (client credentials) ou du mTLS entre les services.</p></div>
+      <div><h3>API HTTP du Schema Registry</h3><p>HTTPS et basic auth : SASL ne protège que son accès au topic <code>_schemas</code>.</p></div>
+      <div><h3>Postgres</h3><p>TLS et un compte par service, à la place de <code>postgres / 1234</code> partagé. Debezium a besoin du droit de réplication.</p></div>
+      <div><h3>ZooKeeper</h3><p>Reste en clair ici. À sécuriser avec SASL, ou à supprimer en passant Kafka en mode KRaft.</p></div>
+    </div>
+  </section>
+
+</div>
+
+</body></html>

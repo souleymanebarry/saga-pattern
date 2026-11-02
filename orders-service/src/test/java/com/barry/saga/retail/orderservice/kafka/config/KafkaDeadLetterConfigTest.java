@@ -28,6 +28,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.listener.AcknowledgingMessageListener;
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer;
@@ -36,11 +37,11 @@ import org.springframework.kafka.support.serializer.DeserializationException;
 import org.springframework.kafka.test.EmbeddedKafkaBroker;
 import org.springframework.kafka.test.context.EmbeddedKafka;
 import org.springframework.kafka.test.utils.KafkaTestUtils;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -154,13 +155,13 @@ class KafkaDeadLetterConfigTest {
 
     /** Démarre un listener câblé exactement comme en production (factory + error handler). */
     private void startListener(String topic, Runnable behaviour) {
-        KafkaConsumerConfig consumerConfig = new KafkaConsumerConfig();
-        ReflectionTestUtils.setField(consumerConfig, "bootstrapServers", broker.getBrokersAsString());
-        ReflectionTestUtils.setField(consumerConfig, "schemaRegistry", SCHEMA_REGISTRY);
+        // Équivalent de spring.kafka.bootstrap-servers + spring.kafka.properties.schema.registry.url
+        KafkaProperties kafkaProperties = new KafkaProperties();
+        kafkaProperties.setBootstrapServers(List.of(broker.getBrokersAsString()));
+        kafkaProperties.getProperties().put(AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, SCHEMA_REGISTRY);
 
-        KafkaDeadLetterConfig deadLetterConfig = new KafkaDeadLetterConfig();
-        ReflectionTestUtils.setField(deadLetterConfig, "bootstrapServers", broker.getBrokersAsString());
-        ReflectionTestUtils.setField(deadLetterConfig, "schemaRegistry", SCHEMA_REGISTRY);
+        KafkaConsumerConfig consumerConfig = new KafkaConsumerConfig(kafkaProperties);
+        KafkaDeadLetterConfig deadLetterConfig = new KafkaDeadLetterConfig(kafkaProperties);
 
         container = consumerConfig
                 .kafkaListenerContainerFactory(deadLetterConfig.kafkaErrorHandler())

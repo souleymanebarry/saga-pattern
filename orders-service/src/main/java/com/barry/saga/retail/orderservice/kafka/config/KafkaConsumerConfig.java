@@ -1,14 +1,14 @@
 package com.barry.saga.retail.orderservice.kafka.config;
 
-import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
+import lombok.RequiredArgsConstructor;
 
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.kafka.KafkaProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.kafka.annotation.EnableKafka;
@@ -24,22 +24,22 @@ import java.util.Map;
 
 @Configuration
 @EnableKafka
+@RequiredArgsConstructor
 public class KafkaConsumerConfig {
 
-    @Value("${spring.kafka.bootstrap-servers}")
-    private String bootstrapServers;
-
-    @Value("${spring.kafka.properties.schema.registry.url}")
-    private String schemaRegistry;
+    private final KafkaProperties kafkaProperties;
 
     /**
      * Configuration commune des consommateurs Avro.
      * Une seule factory suffit : le type concret de l'événement est résolu
      * dynamiquement par le Schema Registry (specific.avro.reader=true).
+     * <p>
+     * Base = configuration Spring Boot ({@code spring.kafka.*}) : bootstrap-servers et
+     * {@code spring.kafka.properties.*} (dont schema.registry.url), puis les réglages
+     * propres à ce consommateur.
      */
     public Map<String, Object> consumerProps() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        Map<String, Object> props = new HashMap<>(kafkaProperties.buildConsumerProperties());
 
         // 🔑 Identité Kafka
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "orders-service-group");
@@ -53,8 +53,7 @@ public class KafkaConsumerConfig {
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ErrorHandlingDeserializer.class);
         props.put(ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS, KafkaAvroDeserializer.class);
 
-        // Schema Registry + lecture en classes Avro spécifiques (SpecificRecord générés)
-        props.put(AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, schemaRegistry);
+        // Lecture en classes Avro spécifiques (SpecificRecord générés)
         props.put(KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG, true);
 
         return props;
