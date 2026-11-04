@@ -37,7 +37,8 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" }
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
             ],
             "body": {
               "mode": "raw",
@@ -48,7 +49,7 @@
               "host": ["{{ordersBaseUrl}}"],
               "path": ["api", "v1", "orders"]
             },
-            "description": "Crée une commande (statut PENDING) et publie un OrderPlacedEvent sur le topic 'order.placed'.\n\nNe pas envoyer idempotencyKey : le contrôleur en génère un et le renvoie dans le header 'Idempotency-key'.\nLes SKU doivent exister dans le catalog-service (enrichissement prix + nom)."
+            "description": "Crée une commande (statut PENDING) et publie un OrderPlacedEvent sur le topic 'order.placed'.\n\nHeader 'Idempotency-Key' obligatoire ({{$guid}} = nouvelle clé à chaque envoi). Pour tester l'idempotence, remplacer {{$guid}} par une valeur fixe et envoyer deux fois : la même commande est renvoyée.\nLes SKU doivent exister dans le catalog-service (enrichissement prix + nom)."
           }
         },
         {

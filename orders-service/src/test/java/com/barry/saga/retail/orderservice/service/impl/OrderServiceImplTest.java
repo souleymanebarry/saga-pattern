@@ -5,17 +5,25 @@ import com.barry.saga.retail.orderservice.client.dto.ProductResponseDTO;
 import com.barry.saga.retail.orderservice.entities.OrderEntity;
 import com.barry.saga.retail.orderservice.entities.OrderItemEntity;
 import com.barry.saga.retail.orderservice.entities.enums.OrderStatus;
+import com.barry.saga.retail.orderservice.exceptions.InvalidOrderException;
+import com.barry.saga.retail.orderservice.exceptions.MissingIdempotencyKeyException;
 import com.barry.saga.retail.orderservice.exceptions.OrderNotFoundException;
+import com.barry.saga.retail.orderservice.exceptions.ProductNotFoundException;
 import com.barry.saga.retail.orderservice.outbox.OrderEventPublisher;
 import com.barry.saga.retail.orderservice.kafka.config.KafkaTopicsConfig;
 import com.barry.saga.retail.orderservice.repositories.OrderRepository;
 import com.barry.saga.retail.order.event.OrderPlacedEvent;
+import org.hibernate.exception.ConstraintViolationException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +49,7 @@ class OrderServiceImplTest {
     private OrderRepository orderRepository;
     private OrderEventPublisher orderEventPublisher;
     private CatalogClient catalogClient;
+    private PlatformTransactionManager transactionManager;
 
     private OrderServiceImpl orderService;
 
@@ -54,7 +63,11 @@ class OrderServiceImplTest {
         KafkaTopicsConfig properties = new KafkaTopicsConfig();
         properties.getTopics().setOrderPlaced("order.placed");
 
-        orderService = new OrderServiceImpl(orderRepository, orderEventPublisher, properties, catalogClient);
+        // TransactionTemplate réel sur un gestionnaire simulé : vérifie commit / rollback sans base
+        transactionManager = mock(PlatformTransactionManager.class);
+
+        orderService = new OrderServiceImpl(orderRepository, orderEventPublisher, properties, catalogClient,
+                new TransactionTemplate(transactionManager));
     }
 
     // ----------------------------------------------------------------------
@@ -62,15 +75,14 @@ class OrderServiceImplTest {
     // ----------------------------------------------------------------------
 
     @Test
-    @DisplayName("createOrder génère une idempotencyKey quand elle est absente")
-    void createOrder_generatesIdempotencyKey_whenBlank() {
+    @DisplayName("createOrder rejette une commande sans idempotencyKey (elle doit venir du client)")
+    void createOrder_rejects_whenIdempotencyKeyBlank() {
         OrderEntity order = orderWithItem(SKU_1, 2, null);
-        stubCatalog(SKU_1, PRODUCT_NAME, new BigDecimal("19.99"));
-        givenNoExistingOrderAndSaveEchoesBack();
+        order.setIdempotencyKey(" ");
 
-        OrderEntity saved = orderService.createOrder(order);
-
-        assertThat(saved.getIdempotencyKey()).isNotBlank();
+        assertThatThrownBy(() -> orderService.createOrder(order))
+                .isInstanceOf(MissingIdempotencyKeyException.class);
+        verifyNoInteractions(orderRepository, orderEventPublisher, catalogClient);
     }
 
     @Test
@@ -85,8 +97,44 @@ class OrderServiceImplTest {
         OrderEntity result = orderService.createOrder(incoming);
 
         assertThat(result).isSameAs(existing);
-        verify(orderRepository, never()).save(any());
+        verify(orderRepository, never()).saveAndFlush(any());
         verifyNoInteractions(orderEventPublisher, catalogClient);
+    }
+
+    @Test
+    @DisplayName("createOrder renvoie la commande créée par une requête concurrente quand la contrainte d'unicité de la clé échoue")
+    void createOrder_returnsConcurrentOrder_whenIdempotencyKeyConstraintViolated() {
+        OrderEntity incoming = orderWithItem(SKU_1, 1, null);
+        incoming.setIdempotencyKey("key-123");
+        OrderEntity concurrent = orderWithItem(SKU_1, 1, PRICE_TEN);
+        concurrent.setIdempotencyKey("key-123");
+        stubCatalog(SKU_1, PRODUCT_NAME, PRICE_TEN);
+        // 1er appel (dans la transaction) : rien ; 2e appel (après le rollback) : la commande concurrente
+        when(orderRepository.findByIdempotencyKey("key-123"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(concurrent));
+        when(orderRepository.saveAndFlush(any()))
+                .thenThrow(constraintViolation(OrderServiceImpl.IDEMPOTENCY_KEY_CONSTRAINT));
+
+        OrderEntity result = orderService.createOrder(incoming);
+
+        assertThat(result).isSameAs(concurrent);
+        verify(transactionManager).rollback(any());
+        verifyNoInteractions(orderEventPublisher);
+    }
+
+    @Test
+    @DisplayName("createOrder propage une violation de contrainte qui ne concerne pas la clé d'idempotence")
+    void createOrder_rethrows_whenOtherConstraintViolated() {
+        OrderEntity incoming = orderWithItem(SKU_1, 1, null);
+        incoming.setIdempotencyKey("key-123");
+        stubCatalog(SKU_1, PRODUCT_NAME, PRICE_TEN);
+        when(orderRepository.findByIdempotencyKey("key-123")).thenReturn(Optional.empty());
+        DataIntegrityViolationException violation = constraintViolation("pk_orders");
+        when(orderRepository.saveAndFlush(any())).thenThrow(violation);
+
+        assertThatThrownBy(() -> orderService.createOrder(incoming)).isSameAs(violation);
+        verifyNoInteractions(orderEventPublisher);
     }
 
     @Test
@@ -107,6 +155,7 @@ class OrderServiceImplTest {
     @DisplayName("createOrder calcule le montant total à partir des prix du catalogue")
     void createOrder_computesTotalAmount() {
         OrderEntity order = new OrderEntity();
+        order.setIdempotencyKey(UUID.randomUUID().toString());
         order.setCustomerId(CUSTOMER_ID);
         order.setItems(new ArrayList<>(List.of(
                 item(SKU_1, 2),
@@ -147,7 +196,7 @@ class OrderServiceImplTest {
 
         orderService.createOrder(order);
 
-        verify(orderRepository).save(any(OrderEntity.class));
+        verify(orderRepository).saveAndFlush(any(OrderEntity.class));
 
         ArgumentCaptor<OrderPlacedEvent> captor = ArgumentCaptor.forClass(OrderPlacedEvent.class);
         verify(orderEventPublisher).publishOrderPlaced(captor.capture());
@@ -167,10 +216,10 @@ class OrderServiceImplTest {
         when(catalogClient.getProductBySku("UNKNOWN")).thenReturn(null);
 
         assertThatThrownBy(() -> orderService.createOrder(order))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ProductNotFoundException.class)
                 .hasMessageContaining("UNKNOWN");
 
-        verify(orderRepository, never()).save(any());
+        verify(orderRepository, never()).saveAndFlush(any());
         verifyNoInteractions(orderEventPublisher);
     }
 
@@ -178,14 +227,15 @@ class OrderServiceImplTest {
     @DisplayName("createOrder échoue quand la commande ne contient aucun article")
     void createOrder_throws_whenNoItems() {
         OrderEntity order = new OrderEntity();
+        order.setIdempotencyKey(UUID.randomUUID().toString());
         order.setItems(new ArrayList<>());
         when(orderRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> orderService.createOrder(order))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(InvalidOrderException.class)
                 .hasMessageContaining("at least one item");
 
-        verify(orderRepository, never()).save(any());
+        verify(orderRepository, never()).saveAndFlush(any());
     }
 
     @Test
@@ -196,9 +246,10 @@ class OrderServiceImplTest {
         when(orderRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> orderService.createOrder(order))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidOrderException.class)
+                .hasMessageContaining(SKU_1);
 
-        verify(orderRepository, never()).save(any());
+        verify(orderRepository, never()).saveAndFlush(any());
     }
 
     // ----------------------------------------------------------------------
@@ -210,6 +261,7 @@ class OrderServiceImplTest {
     void getOrderByOrderId_returnsOrder_whenFound() {
         UUID id = UUID.randomUUID();
         OrderEntity order = new OrderEntity();
+        order.setIdempotencyKey(UUID.randomUUID().toString());
         order.setOrderId(id);
         when(orderRepository.findById(id)).thenReturn(Optional.of(order));
 
@@ -230,10 +282,17 @@ class OrderServiceImplTest {
     //                            helpers
     // ----------------------------------------------------------------------
 
+    /** Exception levée par Spring Data quand Postgres refuse l'INSERT sur la contrainte donnée. */
+    private DataIntegrityViolationException constraintViolation(String constraintName) {
+        return new DataIntegrityViolationException("could not execute statement",
+                new ConstraintViolationException("duplicate key value violates unique constraint",
+                        new SQLException("duplicate key", "23505"), constraintName));
+    }
+
     private void givenNoExistingOrderAndSaveEchoesBack() {
         when(orderRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
         // simule JPA : l'identifiant est généré à la sauvegarde
-        when(orderRepository.save(any())).thenAnswer(inv -> {
+        when(orderRepository.saveAndFlush(any())).thenAnswer(inv -> {
             OrderEntity saved = inv.getArgument(0);
             if (saved.getOrderId() == null) {
                 saved.setOrderId(UUID.randomUUID());
@@ -244,6 +303,7 @@ class OrderServiceImplTest {
 
     private OrderEntity orderWithItem(String sku, int quantity, BigDecimal unitPrice) {
         OrderEntity order = new OrderEntity();
+        order.setIdempotencyKey(UUID.randomUUID().toString());
         order.setCustomerId(CUSTOMER_ID);
         order.setItems(new ArrayList<>(List.of(item(sku, quantity, unitPrice))));
         return order;
