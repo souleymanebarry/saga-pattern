@@ -27,7 +27,7 @@ public class ProductControllerImpl implements ProductController {
 
     @Override
     public ResponseEntity<ProductResponseDTO> getBySku(String sku) {
-        log.info("GET api/v1/orders/{}: ", sku);
+        log.info("GET api/v1/products/{}", sku);
         ProductEntity product = productService.getProductBySku(sku);
         ProductResponseDTO response = productMapper.toResponse(product);
         return ResponseEntity.ok(response);
@@ -35,7 +35,7 @@ public class ProductControllerImpl implements ProductController {
 
     @Override
     public ResponseEntity<List<ProductResponseDTO>> getAll() {
-        log.info("GET api/v1/orders");
+        log.info("GET api/v1/products");
         List<ProductResponseDTO> response =
                 productService.getAll().stream().map(productMapper::toResponse).toList();
         return ResponseEntity.ok(response);

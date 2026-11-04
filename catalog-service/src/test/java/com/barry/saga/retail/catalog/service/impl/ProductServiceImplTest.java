@@ -1,6 +1,7 @@
 package com.barry.saga.retail.catalog.service.impl;
 
 import com.barry.saga.retail.catalog.entities.ProductEntity;
+import com.barry.saga.retail.catalog.exceptions.ProductNotFoundException;
 import com.barry.saga.retail.catalog.repositories.ProductRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,12 +41,12 @@ class ProductServiceImplTest {
     }
 
     @Test
-    @DisplayName("getProductBySku lève IllegalArgumentException quand le SKU est inconnu")
+    @DisplayName("getProductBySku lève ProductNotFoundException quand le SKU est inconnu")
     void getProductBySku_throws_whenNotFound() {
         when(productRepository.findBySku("UNKNOWN")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> productService.getProductBySku("UNKNOWN"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ProductNotFoundException.class)
                 .hasMessageContaining("UNKNOWN");
     }
 
