@@ -32,8 +32,8 @@ Le fonctionnement est décrit dans [`saga-flow.md` § 5](saga-flow.md#5-garantie
    `orders-service` doit tourner avec le code qui exige le header `Idempotency-Key`
    (le redémarrer après un changement de branche).
 
-3. Les SKU utilisés existent dans le catalogue. Un SKU inconnu fait échouer la création en `500`
-   (catalog-service répond `500` au lieu de `404`), indépendamment de l'idempotence.
+3. Les SKU utilisés existent dans le catalogue. Un SKU inconnu fait échouer la création en `422`
+   (`Product not found`, catalog-service répond `404`), indépendamment de l'idempotence.
 
    ```bash
    curl -s localhost:8085/api/v1/products/SKU-PS5SLIM | jq '{sku, price}'

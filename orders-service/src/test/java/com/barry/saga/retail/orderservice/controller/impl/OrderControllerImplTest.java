@@ -3,7 +3,9 @@ package com.barry.saga.retail.orderservice.controller.impl;
 import com.barry.saga.retail.orderservice.dtos.OrderResponse;
 import com.barry.saga.retail.orderservice.entities.OrderEntity;
 import com.barry.saga.retail.orderservice.exceptions.GlobalExceptionHandler;
+import com.barry.saga.retail.orderservice.exceptions.InvalidOrderException;
 import com.barry.saga.retail.orderservice.exceptions.OrderNotFoundException;
+import com.barry.saga.retail.orderservice.exceptions.ProductNotFoundException;
 import com.barry.saga.retail.orderservice.mappers.OrderWebMapper;
 import com.barry.saga.retail.orderservice.service.OrderService;
 import lombok.SneakyThrows;
@@ -81,7 +83,9 @@ class OrderControllerImplTest {
         mockMvc.perform(post("/api/v1/orders")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(ORDER_JSON))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Missing request header"))
+                .andExpect(jsonPath("$.detail").value("Idempotency-Key header is required"));
 
         verifyNoInteractions(orderService);
     }
@@ -94,9 +98,43 @@ class OrderControllerImplTest {
                         .header("Idempotency-Key", " ")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(ORDER_JSON))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Missing idempotency key"));
 
         verifyNoInteractions(orderService);
+    }
+
+    @Test
+    @SneakyThrows
+    @DisplayName("POST /api/v1/orders renvoie 400 si la commande est invalide")
+    void createOrder_returns400WhenOrderInvalid() {
+        when(orderWebMapper.toOrderEntity(any())).thenReturn(new OrderEntity());
+        when(orderService.createOrder(any()))
+                .thenThrow(new InvalidOrderException("An order must contain at least one item"));
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ORDER_JSON))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.title").value("Invalid order"))
+                .andExpect(jsonPath("$.detail").value("An order must contain at least one item"));
+    }
+
+    @Test
+    @SneakyThrows
+    @DisplayName("POST /api/v1/orders renvoie 422 si un SKU n'existe pas dans le catalogue")
+    void createOrder_returns422WhenProductNotFound() {
+        when(orderWebMapper.toOrderEntity(any())).thenReturn(new OrderEntity());
+        when(orderService.createOrder(any())).thenThrow(new ProductNotFoundException("SKU-1"));
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .header("Idempotency-Key", UUID.randomUUID().toString())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ORDER_JSON))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.title").value("Product not found"))
+                .andExpect(jsonPath("$.detail").value("Product not found in catalog: SKU-1"));
     }
 
     @Test

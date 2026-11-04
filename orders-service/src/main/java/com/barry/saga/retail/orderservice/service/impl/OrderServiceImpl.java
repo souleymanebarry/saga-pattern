@@ -4,7 +4,10 @@ import com.barry.saga.retail.orderservice.client.catalog.CatalogClient;
 import com.barry.saga.retail.orderservice.entities.OrderEntity;
 import com.barry.saga.retail.orderservice.entities.OrderItemEntity;
 import com.barry.saga.retail.orderservice.entities.enums.OrderStatus;
+import com.barry.saga.retail.orderservice.exceptions.InvalidOrderException;
+import com.barry.saga.retail.orderservice.exceptions.MissingIdempotencyKeyException;
 import com.barry.saga.retail.orderservice.exceptions.OrderNotFoundException;
+import com.barry.saga.retail.orderservice.exceptions.ProductNotFoundException;
 import com.barry.saga.retail.orderservice.outbox.OrderEventPublisher;
 import com.barry.saga.retail.orderservice.kafka.config.KafkaTopicsConfig;
 import com.barry.saga.retail.orderservice.repositories.OrderRepository;
@@ -60,7 +63,7 @@ public class OrderServiceImpl implements OrderService {
 
         // La clé vient du client : en générer une ici rendrait chaque nouvel essai unique
         if (StringUtils.isBlank(orderEntity.getIdempotencyKey())) {
-            throw new IllegalArgumentException("An order must have an idempotency key");
+            throw new MissingIdempotencyKeyException();
         }
 
         final String idempotencyKey = orderEntity.getIdempotencyKey();
@@ -183,13 +186,13 @@ public class OrderServiceImpl implements OrderService {
 
     private void validateOrderItems(OrderEntity orderEntity) {
         if (orderEntity.getItems() == null || orderEntity.getItems().isEmpty()) {
-            throw new IllegalArgumentException("An order must contain at least one item");
+            throw new InvalidOrderException("An order must contain at least one item");
         }
 
         // Vérifier chaque ligne
         for (OrderItemEntity item : orderEntity.getItems()) {
             if (item.getQuantity() == null || item.getQuantity() <= 0) {
-                throw new IllegalArgumentException("La quantité doit être > 0 pour l'article "+ item.getSku());
+                throw new InvalidOrderException("Quantity must be greater than 0 for item " + item.getSku());
             }
         }
     }
@@ -211,7 +214,7 @@ public class OrderServiceImpl implements OrderService {
             var product = catalogRestClient.getProductBySku(item.getSku());
 
             if (product == null) {
-                throw new IllegalStateException("Product with SKU "+item.getSku()+"does not exist in catalog-service");
+                throw new ProductNotFoundException(item.getSku());
             }
 
             //Enrichment from catalog (SOURCE OF TRUTH)

@@ -5,7 +5,10 @@ import com.barry.saga.retail.orderservice.client.dto.ProductResponseDTO;
 import com.barry.saga.retail.orderservice.entities.OrderEntity;
 import com.barry.saga.retail.orderservice.entities.OrderItemEntity;
 import com.barry.saga.retail.orderservice.entities.enums.OrderStatus;
+import com.barry.saga.retail.orderservice.exceptions.InvalidOrderException;
+import com.barry.saga.retail.orderservice.exceptions.MissingIdempotencyKeyException;
 import com.barry.saga.retail.orderservice.exceptions.OrderNotFoundException;
+import com.barry.saga.retail.orderservice.exceptions.ProductNotFoundException;
 import com.barry.saga.retail.orderservice.outbox.OrderEventPublisher;
 import com.barry.saga.retail.orderservice.kafka.config.KafkaTopicsConfig;
 import com.barry.saga.retail.orderservice.repositories.OrderRepository;
@@ -78,8 +81,7 @@ class OrderServiceImplTest {
         order.setIdempotencyKey(" ");
 
         assertThatThrownBy(() -> orderService.createOrder(order))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("idempotency key");
+                .isInstanceOf(MissingIdempotencyKeyException.class);
         verifyNoInteractions(orderRepository, orderEventPublisher, catalogClient);
     }
 
@@ -214,7 +216,7 @@ class OrderServiceImplTest {
         when(catalogClient.getProductBySku("UNKNOWN")).thenReturn(null);
 
         assertThatThrownBy(() -> orderService.createOrder(order))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ProductNotFoundException.class)
                 .hasMessageContaining("UNKNOWN");
 
         verify(orderRepository, never()).saveAndFlush(any());
@@ -230,7 +232,7 @@ class OrderServiceImplTest {
         when(orderRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> orderService.createOrder(order))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(InvalidOrderException.class)
                 .hasMessageContaining("at least one item");
 
         verify(orderRepository, never()).saveAndFlush(any());
@@ -244,7 +246,8 @@ class OrderServiceImplTest {
         when(orderRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> orderService.createOrder(order))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidOrderException.class)
+                .hasMessageContaining(SKU_1);
 
         verify(orderRepository, never()).saveAndFlush(any());
     }
