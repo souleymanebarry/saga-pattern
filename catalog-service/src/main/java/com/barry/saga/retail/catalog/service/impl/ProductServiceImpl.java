@@ -1,6 +1,7 @@
 package com.barry.saga.retail.catalog.service.impl;
 
 import com.barry.saga.retail.catalog.entities.ProductEntity;
+import com.barry.saga.retail.catalog.exceptions.ProductNotFoundException;
 import com.barry.saga.retail.catalog.repositories.ProductRepository;
 import com.barry.saga.retail.catalog.service.ProductService;
 import lombok.RequiredArgsConstructor;
@@ -20,7 +21,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     public ProductEntity getProductBySku(String sku) {
         return productRepository.findBySku(sku)
-                .orElseThrow(() -> new IllegalArgumentException("Product not found: " + sku));
+                .orElseThrow(() -> new ProductNotFoundException(sku));
     }
 
     @Override
