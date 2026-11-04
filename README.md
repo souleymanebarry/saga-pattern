@@ -54,6 +54,8 @@ Il démontre :
 
 🧪 **Tester les Dead Letter Topics avec la console Kafka :** [`docs/dlt-testing.md`](docs/dlt-testing.md)
 
+🧪 **Tester l'idempotence de la création de commande :** [`docs/idempotency-testing.md`](docs/idempotency-testing.md)
+
 📡 **Communication inter-services**
 
 | Type          | Utilisation                      |

@@ -62,15 +62,15 @@ class OrderServiceImplTest {
     // ----------------------------------------------------------------------
 
     @Test
-    @DisplayName("createOrder génère une idempotencyKey quand elle est absente")
-    void createOrder_generatesIdempotencyKey_whenBlank() {
+    @DisplayName("createOrder rejette une commande sans idempotencyKey (elle doit venir du client)")
+    void createOrder_rejects_whenIdempotencyKeyBlank() {
         OrderEntity order = orderWithItem(SKU_1, 2, null);
-        stubCatalog(SKU_1, PRODUCT_NAME, new BigDecimal("19.99"));
-        givenNoExistingOrderAndSaveEchoesBack();
+        order.setIdempotencyKey(" ");
 
-        OrderEntity saved = orderService.createOrder(order);
-
-        assertThat(saved.getIdempotencyKey()).isNotBlank();
+        assertThatThrownBy(() -> orderService.createOrder(order))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("idempotency key");
+        verifyNoInteractions(orderRepository, orderEventPublisher, catalogClient);
     }
 
     @Test
@@ -107,6 +107,7 @@ class OrderServiceImplTest {
     @DisplayName("createOrder calcule le montant total à partir des prix du catalogue")
     void createOrder_computesTotalAmount() {
         OrderEntity order = new OrderEntity();
+        order.setIdempotencyKey(UUID.randomUUID().toString());
         order.setCustomerId(CUSTOMER_ID);
         order.setItems(new ArrayList<>(List.of(
                 item(SKU_1, 2),
@@ -178,6 +179,7 @@ class OrderServiceImplTest {
     @DisplayName("createOrder échoue quand la commande ne contient aucun article")
     void createOrder_throws_whenNoItems() {
         OrderEntity order = new OrderEntity();
+        order.setIdempotencyKey(UUID.randomUUID().toString());
         order.setItems(new ArrayList<>());
         when(orderRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
 
@@ -210,6 +212,7 @@ class OrderServiceImplTest {
     void getOrderByOrderId_returnsOrder_whenFound() {
         UUID id = UUID.randomUUID();
         OrderEntity order = new OrderEntity();
+        order.setIdempotencyKey(UUID.randomUUID().toString());
         order.setOrderId(id);
         when(orderRepository.findById(id)).thenReturn(Optional.of(order));
 
@@ -244,6 +247,7 @@ class OrderServiceImplTest {
 
     private OrderEntity orderWithItem(String sku, int quantity, BigDecimal unitPrice) {
         OrderEntity order = new OrderEntity();
+        order.setIdempotencyKey(UUID.randomUUID().toString());
         order.setCustomerId(CUSTOMER_ID);
         order.setItems(new ArrayList<>(List.of(item(sku, quantity, unitPrice))));
         return order;

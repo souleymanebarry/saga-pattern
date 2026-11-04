@@ -48,16 +48,17 @@ public class OrderServiceImpl implements OrderService {
     public OrderEntity createOrder(OrderEntity orderEntity) {
         log.info("➡ Initialization of an order for customer {}", orderEntity.getCustomerId());
 
-        // ensure idempotency key
+        // La clé vient du client : en générer une ici rendrait chaque nouvel essai unique
         if (StringUtils.isBlank(orderEntity.getIdempotencyKey())) {
-            orderEntity.setIdempotencyKey(UUID.randomUUID().toString());
+            throw new IllegalArgumentException("An order must have an idempotency key");
         }
 
         // Idempotency check
         final String idempotencyKey = orderEntity.getIdempotencyKey();
         var existing = orderRepository.findByIdempotencyKey(idempotencyKey);
         if (existing.isPresent()) {
-            log.info("♻ Commande déjà existante pour idempotencyKey={} → renvoi sans création",
+            log.info("♻ Order already exists for idempotencyKey={} → " +
+                            "returning existing order without creating a new one",
                     orderEntity.getIdempotencyKey());
             return existing.get();
         }
@@ -84,7 +85,7 @@ public class OrderServiceImpl implements OrderService {
         // 4 Persist
         OrderEntity savedOrder = orderRepository.save(orderEntity);
 
-        log.info("✔ Commande {} créée avec succès", savedOrder.getOrderId());
+        log.info("✔ Order {} created successfully", savedOrder.getOrderId());
 
         // 5 Évènement écrit dans l'outbox, dans la même transaction que la commande
         //   (Debezium le publiera ensuite sur Kafka)
