@@ -13,7 +13,7 @@ requête. Une clé déjà connue renvoie la commande existante, sans nouvelle co
 | 4 | Header vide | `400`, aucune commande |
 | 5 | Même body, nouvelle clé | `200`, **nouvelle** commande (la clé identifie la tentative, pas le contenu) |
 | 6 | Même clé, body différent | `200`, commande **d'origine** renvoyée, nouveau body ignoré ⚠ limite connue |
-| 7 | Deux requêtes simultanées, même clé | une `200`, l'autre `500` ⚠ limite connue |
+| 7 | Requêtes simultanées, même clé | `200` partout, **même `orderId`**, 1 seule commande |
 
 Le fonctionnement est décrit dans [`saga-flow.md` § 5](saga-flow.md#5-garanties--invariants).
 
@@ -196,33 +196,39 @@ body avec la clé et la comparer au rejeu.
 
 ---
 
-## 7. Requêtes simultanées avec la même clé ⚠ limite connue
+## 7. Requêtes simultanées avec la même clé
 
-Deux requêtes arrivent en même temps : les deux passent `findByIdempotencyKey` sans rien
-trouver, puis la contrainte `uk_orders_idempotency_key` fait échouer la seconde à l'insertion.
+Plusieurs requêtes arrivent en même temps : toutes passent `findByIdempotencyKey` sans rien
+trouver, puis la contrainte `uk_orders_idempotency_key` n'en laisse insérer qu'une. Les autres
+interceptent la violation après le rollback de leur transaction et renvoient la commande créée
+par la première (`OrderServiceImpl.createOrder`).
 
 ```bash
 export KEY=$(cat /proc/sys/kernel/random/uuid)
-for i in 1 2 3; do
-  curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8080/api/v1/orders \
+for i in 1 2 3 4 5; do
+  curl -s -w " → %{http_code}\n" -X POST localhost:8080/api/v1/orders \
     -H "Content-Type: application/json" -H "Idempotency-Key: $KEY" \
-    -d "$ORDER" &
+    -d "$ORDER" | sed -E 's/.*"orderId":"([^"]+)".*( → [0-9]+)$/\1\2/' &
 done; wait
 ```
 
-**Comportement actuel** : un `200` et des `500` (`DataIntegrityViolationException` dans les logs).
-La base reste cohérente :
+**Attendu**
 
-```bash
-psql-orders -c "select count(*) from orders where idempotency_key = '$KEY'"   # → 1
-```
+- 5 lignes `<orderId> → 200`, **toutes avec le même `orderId`**.
+- Log `orders-service` des requêtes perdantes :
+  `♻ Concurrent request already created the order for idempotencyKey=<KEY> → returning it`.
+- Une seule commande, un seul évènement :
 
-**Comportement cible** : toutes les réponses en `200` avec le même `orderId` (intercepter la
-violation de contrainte et relire la commande existante), ou `409 Conflict` pour celles qui
-arrivent pendant le traitement de la première.
+  ```bash
+  psql-orders -c "select count(*) from orders where idempotency_key = '$KEY'"   # → 1
+  psql-orders -c "select count(*) from outbox_event o join orders c on o.aggregate_id = c.order_id::text
+                  where c.idempotency_key = '$KEY' and o.event_type = 'OrderPlacedEvent'"   # → 1
+  ```
 
-> Selon la vitesse de la machine, les appels peuvent ne pas se chevaucher et tous répondre `200` :
-> relancer avec une nouvelle clé ou augmenter le nombre d'itérations.
+> Si le log `♻ Concurrent request…` n'apparaît pas, les appels ne se sont pas chevauchés
+> (la 1re requête avait déjà commité) et les suivantes sont passées par le scénario 2 :
+> relancer avec une nouvelle clé ou plus d'itérations. Le chevauchement est plus fréquent
+> au 1er appel, quand l'appel au catalog-service allonge la transaction.
 
 ---
 

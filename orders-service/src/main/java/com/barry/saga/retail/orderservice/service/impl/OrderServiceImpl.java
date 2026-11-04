@@ -15,8 +15,10 @@ import com.barry.saga.retail.order.event.OrderPlacedEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.log4j.Log4j2;
 import org.apache.commons.lang3.StringUtils;
+import org.hibernate.exception.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -29,10 +31,14 @@ import java.util.UUID;
 @Log4j2
 public class OrderServiceImpl implements OrderService {
 
+    /** Contrainte UNIQUE sur orders.idempotency_key (changeset 001-create-orders-table). */
+    static final String IDEMPOTENCY_KEY_CONSTRAINT = "uk_orders_idempotency_key";
+
     private final OrderRepository orderRepository;
     private final OrderEventPublisher orderEventPublisher;
     private final KafkaTopicsConfig properties;
     private final CatalogClient catalogRestClient;
+    private final TransactionTemplate transactionTemplate;
 
     // ----------------------------------------------------------------------
     //                MÉTHODE PRINCIPALE : CRÉATION DE COMMANDE
@@ -41,9 +47,13 @@ public class OrderServiceImpl implements OrderService {
     /**
      * Crée une commande avec validation métier complète,
      * puis enregistre un événement OrderPlacedEvent dans l'outbox (publié sur Kafka par Debezium).
+     * <p>
+     * Requêtes simultanées avec la même clé : toutes passent la vérification d'idempotence,
+     * la contrainte {@value #IDEMPOTENCY_KEY_CONSTRAINT} n'en laisse insérer qu'une, et les autres
+     * renvoient la commande qu'elle a créée. La transaction est gérée par {@link TransactionTemplate}
+     * (et non {@code @Transactional}) pour intercepter l'échec <b>après</b> son rollback :
+     * Postgres refuse toute requête dans une transaction où un INSERT a échoué.
      */
-
-    @Transactional
     @Override
     public OrderEntity createOrder(OrderEntity orderEntity) {
         log.info("➡ Initialization of an order for customer {}", orderEntity.getCustomerId());
@@ -53,6 +63,20 @@ public class OrderServiceImpl implements OrderService {
             throw new IllegalArgumentException("An order must have an idempotency key");
         }
 
+        final String idempotencyKey = orderEntity.getIdempotencyKey();
+        try {
+            return transactionTemplate.execute(status -> createOrderInTransaction(orderEntity));
+        } catch (DataIntegrityViolationException ex) {
+            if (!isIdempotencyKeyViolation(ex)) {
+                throw ex;
+            }
+            log.info("♻ Concurrent request already created the order for idempotencyKey={} → returning it",
+                    idempotencyKey);
+            return orderRepository.findByIdempotencyKey(idempotencyKey).orElseThrow(() -> ex);
+        }
+    }
+
+    private OrderEntity createOrderInTransaction(OrderEntity orderEntity) {
         // Idempotency check
         final String idempotencyKey = orderEntity.getIdempotencyKey();
         var existing = orderRepository.findByIdempotencyKey(idempotencyKey);
@@ -82,8 +106,8 @@ public class OrderServiceImpl implements OrderService {
         // compute total
         orderEntity.setTotalAmount(getTotalAmount(orderEntity));
 
-        // 4 Persist
-        OrderEntity savedOrder = orderRepository.save(orderEntity);
+        // 4 Persist (flush immédiat : un doublon de clé échoue ici, avant l'écriture dans l'outbox)
+        OrderEntity savedOrder = orderRepository.saveAndFlush(orderEntity);
 
         log.info("✔ Order {} created successfully", savedOrder.getOrderId());
 
@@ -94,6 +118,15 @@ public class OrderServiceImpl implements OrderService {
                 savedOrder.getOrderId(), properties.getTopics().getOrderPlaced());
 
         return savedOrder;
+    }
+
+    private boolean isIdempotencyKeyViolation(DataIntegrityViolationException ex) {
+        for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation) {
+                return IDEMPOTENCY_KEY_CONSTRAINT.equalsIgnoreCase(violation.getConstraintName());
+            }
+        }
+        return false;
     }
 
     // ----------------------------------------------------------------------
