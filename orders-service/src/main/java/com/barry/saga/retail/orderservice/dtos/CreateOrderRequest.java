@@ -10,6 +10,7 @@ import java.util.List;
 /**
  * DTO représentant la requête de création d'une commande.
  * Utilisé uniquement par le contrôleur REST.
+ * La clé d'idempotence n'est pas dans le body : elle arrive par le header {@code Idempotency-Key}.
  */
 
 @Data
@@ -21,6 +22,4 @@ public class CreateOrderRequest {
     private String customerId;
 
     private List<OrderItemRequest> items;
-
-    private String idempotencyKey;
 }

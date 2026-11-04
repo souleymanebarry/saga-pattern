@@ -142,10 +142,10 @@ commande en `FAILED` et publie `OrderFailedEvent`.
 
 ## 5. Garanties & invariants
 
-- **Idempotence à la création** : `OrderEntity.idempotencyKey`. Si une clé fournie par le
-  client existe déjà, la commande est renvoyée sans nouvelle création
-  (`OrderServiceImpl` — `findByIdempotencyKey`). Une clé absente est générée aléatoirement
-  (donc *pas* d'idempotence pour ces requêtes — comportement assumé).
+- **Idempotence à la création** : le client génère une clé (UUID) et l'envoie dans le header
+  obligatoire `Idempotency-Key` (absent ou vide → `400`). Il réutilise la même clé s'il retente
+  la requête : si elle existe déjà, la commande est renvoyée sans nouvelle création
+  (`OrderServiceImpl` — `findByIdempotencyKey`, contrainte `UNIQUE` sur `orders.idempotency_key`).
 - **Ordre par commande** : clé Kafka = `orderId` → 1 partition par commande.
 - **Ack manuel** : consumers en `AckMode.MANUAL`. L'offset n'est commité qu'après traitement.
   Si la commande est introuvable, on `ack` quand même (rejouer n'aiderait pas → évite le *poison pill*).

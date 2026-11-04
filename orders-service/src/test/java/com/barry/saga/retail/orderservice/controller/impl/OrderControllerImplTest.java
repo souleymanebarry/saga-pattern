@@ -6,21 +6,34 @@ import com.barry.saga.retail.orderservice.exceptions.GlobalExceptionHandler;
 import com.barry.saga.retail.orderservice.exceptions.OrderNotFoundException;
 import com.barry.saga.retail.orderservice.mappers.OrderWebMapper;
 import com.barry.saga.retail.orderservice.service.OrderService;
+import lombok.SneakyThrows;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class OrderControllerImplTest {
+
+    private static final String ORDER_JSON = """
+            {"customerId": "CUST-001", "items": [{"sku": "SKU-1", "quantity": 2}]}
+            """;
 
     private OrderService orderService;
     private OrderWebMapper orderWebMapper;
@@ -37,8 +50,59 @@ class OrderControllerImplTest {
     }
 
     @Test
+    @SneakyThrows
+    @DisplayName("POST /api/v1/orders transmet la clé du header Idempotency-Key au service et la renvoie")
+    void createOrder_usesClientIdempotencyKey() {
+        String idempotencyKey = UUID.randomUUID().toString();
+        UUID orderId = UUID.randomUUID();
+        OrderEntity mapped = new OrderEntity();
+        when(orderWebMapper.toOrderEntity(any())).thenReturn(mapped);
+        when(orderService.createOrder(mapped)).thenReturn(mapped);
+        when(orderWebMapper.toResponse(mapped))
+                .thenReturn(OrderResponse.builder().orderId(orderId).status("PENDING").build());
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ORDER_JSON))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Idempotency-Key", idempotencyKey))
+                .andExpect(jsonPath("$.orderId").value(orderId.toString()));
+
+        ArgumentCaptor<OrderEntity> captor = ArgumentCaptor.forClass(OrderEntity.class);
+        verify(orderService).createOrder(captor.capture());
+        assertThat(captor.getValue().getIdempotencyKey()).isEqualTo(idempotencyKey);
+    }
+
+    @Test
+    @SneakyThrows
+    @DisplayName("POST /api/v1/orders renvoie 400 sans header Idempotency-Key")
+    void createOrder_returns400WhenIdempotencyKeyMissing() {
+        mockMvc.perform(post("/api/v1/orders")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ORDER_JSON))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    @SneakyThrows
+    @DisplayName("POST /api/v1/orders renvoie 400 si le header Idempotency-Key est vide")
+    void createOrder_returns400WhenIdempotencyKeyBlank() {
+        mockMvc.perform(post("/api/v1/orders")
+                        .header("Idempotency-Key", " ")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ORDER_JSON))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(orderService);
+    }
+
+    @Test
+    @SneakyThrows
     @DisplayName("GET /api/v1/orders/{id} renvoie 200 avec la commande")
-    void getOrderById_returnsOrder() throws Exception {
+    void getOrderById_returnsOrder() {
         UUID orderId = UUID.randomUUID();
         OrderEntity entity = OrderEntity.builder().orderId(orderId).build();
         when(orderService.getOrderByOrderId(orderId)).thenReturn(entity);
@@ -52,8 +116,9 @@ class OrderControllerImplTest {
     }
 
     @Test
+    @SneakyThrows
     @DisplayName("GET /api/v1/orders/{id} renvoie 404 si la commande n'existe pas")
-    void getOrderById_returns404WhenNotFound() throws Exception {
+    void getOrderById_returns404WhenNotFound() {
         UUID orderId = UUID.randomUUID();
         when(orderService.getOrderByOrderId(orderId))
                 .thenThrow(new OrderNotFoundException(orderId.toString()));
