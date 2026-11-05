@@ -11,6 +11,8 @@ import com.barry.saga.retail.stock.event.StockReservedEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -109,6 +111,56 @@ class StockEventListenerTest {
 
         listener.onStockRejected(rejected(orderId, "x"), ack);
 
+        verify(orderRepository, never()).save(any());
+        verifyNoInteractions(orderEventPublisher);
+        verify(ack).acknowledge();
+    }
+
+    @ParameterizedTest(name = "commande déjà {0}")
+    @EnumSource(value = OrderStatus.class, names = "PENDING", mode = EnumSource.Mode.EXCLUDE)
+    @DisplayName("onStockReserved ignore un doublon (commande non PENDING) : ni save ni publication, mais acquitte")
+    void onStockReserved_ignoresDuplicate_whenOrderNotPending(OrderStatus status) {
+        UUID orderId = UUID.randomUUID();
+        OrderEntity order = existingOrder(orderId);
+        order.setStatus(status);
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+
+        listener.onStockReserved(reserved(orderId), ack);
+
+        assertThat(order.getStatus()).isEqualTo(status);
+        verify(orderRepository, never()).save(any());
+        verifyNoInteractions(orderEventPublisher);
+        verify(ack).acknowledge();
+    }
+
+    @Test
+    @DisplayName("onStockReserved livré deux fois ne publie qu'un seul OrderConfirmedEvent")
+    void onStockReserved_publishesOnce_whenDeliveredTwice() {
+        UUID orderId = UUID.randomUUID();
+        OrderEntity order = existingOrder(orderId);
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+
+        listener.onStockReserved(reserved(orderId), ack);
+        listener.onStockReserved(reserved(orderId), ack);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
+        verify(orderEventPublisher, times(1)).publishOrderConfirmed(any());
+        verify(ack, times(2)).acknowledge();
+    }
+
+    @ParameterizedTest(name = "commande déjà {0}")
+    @EnumSource(value = OrderStatus.class, names = "PENDING", mode = EnumSource.Mode.EXCLUDE)
+    @DisplayName("onStockRejected ignore un doublon ou un rejet tardif (commande non PENDING) mais acquitte")
+    void onStockRejected_ignoresDuplicate_whenOrderNotPending(OrderStatus status) {
+        UUID orderId = UUID.randomUUID();
+        OrderEntity order = existingOrder(orderId);
+        order.setStatus(status);
+        when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
+
+        listener.onStockRejected(rejected(orderId, "out of stock"), ack);
+
+        // en particulier : une commande CONFIRMED ne repasse jamais en FAILED
+        assertThat(order.getStatus()).isEqualTo(status);
         verify(orderRepository, never()).save(any());
         verifyNoInteractions(orderEventPublisher);
         verify(ack).acknowledge();
