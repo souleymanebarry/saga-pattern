@@ -48,6 +48,15 @@ public class GlobalExceptionHandler {
         return problem;
     }
 
+    /** 422 (draft IETF Idempotency-Key) : la clé a déjà servi pour une requête au contenu différent. */
+    @ExceptionHandler(IdempotencyKeyMismatchException.class)
+    public ProblemDetail handleIdempotencyKeyMismatch(IdempotencyKeyMismatchException ex) {
+        log.warn("⚠ {}", ex.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage());
+        problem.setTitle("Idempotency key reused");
+        return problem;
+    }
+
     /** 422 : la requête est bien formée, mais un SKU commandé n'existe pas. */
     @ExceptionHandler(ProductNotFoundException.class)
     public ProblemDetail handleProductNotFound(ProductNotFoundException ex) {

@@ -3,6 +3,7 @@ package com.barry.saga.retail.orderservice.controller.impl;
 import com.barry.saga.retail.orderservice.dtos.OrderResponse;
 import com.barry.saga.retail.orderservice.entities.OrderEntity;
 import com.barry.saga.retail.orderservice.exceptions.GlobalExceptionHandler;
+import com.barry.saga.retail.orderservice.exceptions.IdempotencyKeyMismatchException;
 import com.barry.saga.retail.orderservice.exceptions.InvalidOrderException;
 import com.barry.saga.retail.orderservice.exceptions.OrderNotFoundException;
 import com.barry.saga.retail.orderservice.exceptions.ProductNotFoundException;
@@ -135,6 +136,23 @@ class OrderControllerImplTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.title").value("Product not found"))
                 .andExpect(jsonPath("$.detail").value("Product not found in catalog: SKU-1"));
+    }
+
+    @Test
+    @SneakyThrows
+    @DisplayName("POST /api/v1/orders renvoie 422 si la clé a déjà servi pour une requête différente")
+    void createOrder_returns422WhenIdempotencyKeyReusedWithDifferentBody() {
+        when(orderWebMapper.toOrderEntity(any())).thenReturn(new OrderEntity());
+        when(orderService.createOrder(any())).thenThrow(new IdempotencyKeyMismatchException("key-123"));
+
+        mockMvc.perform(post("/api/v1/orders")
+                        .header("Idempotency-Key", "key-123")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ORDER_JSON))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.title").value("Idempotency key reused"))
+                .andExpect(jsonPath("$.detail")
+                        .value("Idempotency-Key key-123 was already used with a different request body"));
     }
 
     @Test
