@@ -152,6 +152,30 @@ commande en `FAILED` et publie `OrderFailedEvent`.
   obligatoire `Idempotency-Key` (absent ou vide → `400`). Il réutilise la même clé s'il retente
   la requête : si elle existe déjà, la commande est renvoyée sans nouvelle création
   (`OrderServiceImpl` — `findByIdempotencyKey`, contrainte `UNIQUE` sur `orders.idempotency_key`).
+  Le rejeu n'est accepté que si le contenu est le même : une empreinte SHA-256 du client et des
+  articles (SKU, quantité, triés par SKU) est stockée dans `orders.request_hash`. Une même clé
+  avec un autre contenu → `422 Idempotency key reused`.
+
+  > **Pourquoi comparer le contenu ?** Sans ce contrôle, un client qui réutilise une clé par
+  > erreur (clé générée au chargement de la page, mise en cache…) pour une **autre** commande
+  > reçoit `200` avec l'ancienne commande : il croit avoir commandé 5 articles alors qu'il
+  > récupère la commande précédente d'1 article, sans aucun signal d'erreur. Une clé désigne
+  > *une* tentative avec *un* contenu ; un contenu différent n'est pas un rejeu mais une erreur
+  > du client, qu'il faut refuser explicitement (comportement de Stripe et du draft IETF
+  > `Idempotency-Key`).
+  >
+  > - **Empreinte métier plutôt que body brut** : comparer le JSON tel quel rejetterait à tort
+  >   un même panier formaté autrement (espaces, ordre des champs ou des articles). Seuls le
+  >   client et les couples (SKU, quantité) comptent ; prix et nom viennent du catalogue, pas du client.
+  > - **SHA-256** : taille fixe (64 caractères) quel que soit le nombre d'articles, sans dupliquer
+  >   le panier dans `orders`.
+  > - **`request_hash = NULL`** (commandes antérieures au changeset `004`) : contenu d'origine
+  >   inconnu, la commande est renvoyée sans comparaison plutôt que de casser le rejeu.
+  > - **Requêtes concurrentes** : le même contrôle s'applique à la commande créée par la requête
+  >   gagnante ; une requête perdante au contenu différent reçoit `422`, pas la commande d'une autre.
+  > - **`422` plutôt que `400` ou `409`** : la requête est bien formée (pas `400`) ; `409 Conflict`
+  >   est réservé par le draft IETF à une requête **encore en cours** avec la même clé ; `422`
+  >   signifie « requête comprise, mais impossible à traiter avec cette clé ».
 - **Ordre par commande** : clé Kafka = `orderId` → 1 partition par commande.
 - **Ack manuel** : consumers en `AckMode.MANUAL`. L'offset n'est commité qu'après traitement.
   Si la commande est introuvable, on `ack` quand même (rejouer n'aiderait pas → évite le *poison pill*).

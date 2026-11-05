@@ -12,7 +12,7 @@ requête. Une clé déjà connue renvoie la commande existante, sans nouvelle co
 | 3 | Header absent | `400`, aucune commande |
 | 4 | Header vide | `400`, aucune commande |
 | 5 | Même body, nouvelle clé | `200`, **nouvelle** commande (la clé identifie la tentative, pas le contenu) |
-| 6 | Même clé, body différent | `200`, commande **d'origine** renvoyée, nouveau body ignoré ⚠ limite connue |
+| 6 | Même clé, body différent | `422`, aucune nouvelle commande, la commande d'origine reste inchangée |
 | 7 | Requêtes simultanées, même clé | `200` partout, **même `orderId`**, 1 seule commande |
 | 8 | Rejeu des évènements stock (Kafka) | Évènements ignorés (`♻`), statuts inchangés, aucun nouvel `OrderConfirmedEvent` |
 
@@ -181,7 +181,7 @@ curl -i -X POST localhost:8080/api/v1/orders \
 
 ---
 
-## 6. Même clé, body différent ⚠ limite connue
+## 6. Même clé, body différent
 
 ```bash
 curl -i -X POST localhost:8080/api/v1/orders \
@@ -189,11 +189,29 @@ curl -i -X POST localhost:8080/api/v1/orders \
   -d '{"customerId":"CUST-001","items":[{"sku":"SKU-MXM3S","quantity":5}]}'
 ```
 
-**Comportement actuel** : `HTTP/1.1 200` avec la commande du scénario 1 (`SKU-PS5SLIM` × 2).
-Le nouveau body est ignoré silencieusement.
+À la création, `orders-service` stocke dans `orders.request_hash` une empreinte SHA-256 du
+contenu métier : client + articles (SKU, quantité). Au rejeu, il compare les empreintes.
 
-**Comportement cible** : `422 Unprocessable Entity`. Il faudra stocker une empreinte (hash) du
-body avec la clé et la comparer au rejeu.
+**Attendu**
+
+- `HTTP/1.1 422` :
+
+  ```json
+  {"title": "Idempotency key reused", "status": 422,
+   "detail": "Idempotency-Key <KEY> was already used with a different request body"}
+  ```
+
+- Log `orders-service` : `❌ idempotencyKey=<KEY> already used for order <orderId> with a different request`.
+- Toujours une seule commande pour la clé, celle du scénario 1 (`SKU-PS5SLIM` × 2) :
+
+  ```bash
+  psql-orders -c "select order_id, request_hash from orders where idempotency_key = '$KEY'"
+  ```
+
+> Ne comptent que le client, les SKU et les quantités : le même panier avec les articles dans un
+> autre ordre, ou un JSON formaté différemment, est un rejeu valide (`200`, même `orderId`).
+> Une commande créée avant le changeset `004` a `request_hash = NULL` : elle est renvoyée
+> sans comparaison.
 
 ---
 
