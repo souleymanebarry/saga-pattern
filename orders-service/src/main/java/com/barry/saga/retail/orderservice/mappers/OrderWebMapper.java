@@ -32,6 +32,7 @@ public interface OrderWebMapper {
     @Mapping(target = "totalAmount", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "requestHash", ignore = true)
     OrderEntity toOrderEntity(CreateOrderRequest request);
 
     @Mapping(target = "order", ignore = true)

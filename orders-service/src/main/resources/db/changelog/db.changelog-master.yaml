@@ -10,3 +10,7 @@ databaseChangeLog:
   - include:
       file: DDL/003-create-outbox-event-table.sql
       relativeToChangelogFile: true
+
+  - include:
+      file: DDL/004-add-request-hash-to-orders.sql
+      relativeToChangelogFile: true
