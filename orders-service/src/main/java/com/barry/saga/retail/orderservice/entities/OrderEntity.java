@@ -47,6 +47,9 @@ public class OrderEntity {
 
     private String idempotencyKey;
 
+    /** Empreinte du contenu de la requête de création, pour refuser une clé réutilisée avec un autre body. */
+    private String requestHash;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
