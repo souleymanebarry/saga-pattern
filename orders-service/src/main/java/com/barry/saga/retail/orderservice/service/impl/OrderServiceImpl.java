@@ -4,6 +4,7 @@ import com.barry.saga.retail.orderservice.client.catalog.CatalogClient;
 import com.barry.saga.retail.orderservice.entities.OrderEntity;
 import com.barry.saga.retail.orderservice.entities.OrderItemEntity;
 import com.barry.saga.retail.orderservice.entities.enums.OrderStatus;
+import com.barry.saga.retail.orderservice.exceptions.IdempotencyKeyMismatchException;
 import com.barry.saga.retail.orderservice.exceptions.InvalidOrderException;
 import com.barry.saga.retail.orderservice.exceptions.MissingIdempotencyKeyException;
 import com.barry.saga.retail.orderservice.exceptions.OrderNotFoundException;
@@ -25,9 +26,17 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Comparator;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -56,6 +65,9 @@ public class OrderServiceImpl implements OrderService {
      * renvoient la commande qu'elle a créée. La transaction est gérée par {@link TransactionTemplate}
      * (et non {@code @Transactional}) pour intercepter l'échec <b>après</b> son rollback :
      * Postgres refuse toute requête dans une transaction où un INSERT a échoué.
+     * <p>
+     * Une clé connue n'est rejouée que si le contenu de la requête est le même : sinon le client
+     * réutilise une clé pour une autre commande, et on refuse ({@link IdempotencyKeyMismatchException}).
      */
     @Override
     public OrderEntity createOrder(OrderEntity orderEntity) {
@@ -67,6 +79,8 @@ public class OrderServiceImpl implements OrderService {
         }
 
         final String idempotencyKey = orderEntity.getIdempotencyKey();
+        // Calculée avant l'enrichissement catalogue : seul compte ce que le client a envoyé
+        orderEntity.setRequestHash(computeRequestHash(orderEntity));
         try {
             return transactionTemplate.execute(status -> createOrderInTransaction(orderEntity));
         } catch (DataIntegrityViolationException ex) {
@@ -75,7 +89,8 @@ public class OrderServiceImpl implements OrderService {
             }
             log.info("♻ Concurrent request already created the order for idempotencyKey={} → returning it",
                     idempotencyKey);
-            return orderRepository.findByIdempotencyKey(idempotencyKey).orElseThrow(() -> ex);
+            OrderEntity concurrent = orderRepository.findByIdempotencyKey(idempotencyKey).orElseThrow(() -> ex);
+            return ensureSameRequest(concurrent, orderEntity);
         }
     }
 
@@ -87,7 +102,7 @@ public class OrderServiceImpl implements OrderService {
             log.info("♻ Order already exists for idempotencyKey={} → " +
                             "returning existing order without creating a new one",
                     orderEntity.getIdempotencyKey());
-            return existing.get();
+            return ensureSameRequest(existing.get(), orderEntity);
         }
 
         // 1 Basic validation (structure + quantités) AVANT tout appel externe :
@@ -121,6 +136,37 @@ public class OrderServiceImpl implements OrderService {
                 savedOrder.getOrderId(), properties.getTopics().getOrderPlaced());
 
         return savedOrder;
+    }
+
+    /**
+     * Rejeu d'une clé connue : renvoie la commande existante si la requête est la même.
+     * Une commande antérieure à la colonne request_hash (NULL) est renvoyée sans comparaison.
+     */
+    private OrderEntity ensureSameRequest(OrderEntity existing, OrderEntity incoming) {
+        if (existing.getRequestHash() != null && !existing.getRequestHash().equals(incoming.getRequestHash())) {
+            log.warn("❌ idempotencyKey={} already used for order {} with a different request",
+                    incoming.getIdempotencyKey(), existing.getOrderId());
+            throw new IdempotencyKeyMismatchException(incoming.getIdempotencyKey());
+        }
+        return existing;
+    }
+
+    /**
+     * Empreinte SHA-256 du contenu métier de la requête : client + articles (SKU, quantité).
+     * Les articles sont triés par SKU : le même panier dans un autre ordre est la même commande.
+     */
+    static String computeRequestHash(OrderEntity order) {
+        List<OrderItemEntity> items = Objects.requireNonNullElse(order.getItems(), List.of());
+        String canonical = order.getCustomerId() + "|" + items.stream()
+                .map(item -> item.getSku() + ":" + item.getQuantity())
+                .sorted(Comparator.naturalOrder())
+                .collect(Collectors.joining(","));
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(canonical.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 not available", e);
+        }
     }
 
     private boolean isIdempotencyKeyViolation(DataIntegrityViolationException ex) {

@@ -5,6 +5,7 @@ import com.barry.saga.retail.orderservice.client.dto.ProductResponseDTO;
 import com.barry.saga.retail.orderservice.entities.OrderEntity;
 import com.barry.saga.retail.orderservice.entities.OrderItemEntity;
 import com.barry.saga.retail.orderservice.entities.enums.OrderStatus;
+import com.barry.saga.retail.orderservice.exceptions.IdempotencyKeyMismatchException;
 import com.barry.saga.retail.orderservice.exceptions.InvalidOrderException;
 import com.barry.saga.retail.orderservice.exceptions.MissingIdempotencyKeyException;
 import com.barry.saga.retail.orderservice.exceptions.OrderNotFoundException;
@@ -92,6 +93,7 @@ class OrderServiceImplTest {
         incoming.setIdempotencyKey("key-123");
         OrderEntity existing = orderWithItem(SKU_1, 1, PRICE_TEN);
         existing.setIdempotencyKey("key-123");
+        existing.setRequestHash(OrderServiceImpl.computeRequestHash(orderWithItem(SKU_1, 1, null)));
         when(orderRepository.findByIdempotencyKey("key-123")).thenReturn(Optional.of(existing));
 
         OrderEntity result = orderService.createOrder(incoming);
@@ -99,6 +101,93 @@ class OrderServiceImplTest {
         assertThat(result).isSameAs(existing);
         verify(orderRepository, never()).saveAndFlush(any());
         verifyNoInteractions(orderEventPublisher, catalogClient);
+    }
+
+    @Test
+    @DisplayName("createOrder refuse une clé déjà utilisée avec un contenu différent, sans créer ni publier")
+    void createOrder_throws_whenIdempotencyKeyReusedWithDifferentRequest() {
+        OrderEntity incoming = orderWithItem(SKU_1, 5, null);
+        incoming.setIdempotencyKey("key-123");
+        OrderEntity existing = orderWithItem(SKU_1, 1, PRICE_TEN);
+        existing.setIdempotencyKey("key-123");
+        existing.setRequestHash(OrderServiceImpl.computeRequestHash(orderWithItem(SKU_1, 1, null)));
+        when(orderRepository.findByIdempotencyKey("key-123")).thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> orderService.createOrder(incoming))
+                .isInstanceOf(IdempotencyKeyMismatchException.class)
+                .hasMessageContaining("key-123");
+        verify(orderRepository, never()).saveAndFlush(any());
+        verifyNoInteractions(orderEventPublisher, catalogClient);
+    }
+
+    @Test
+    @DisplayName("createOrder renvoie sans comparaison une commande antérieure à request_hash (NULL)")
+    void createOrder_returnsExisting_whenStoredRequestHashIsNull() {
+        OrderEntity incoming = orderWithItem(SKU_2, 9, null);
+        incoming.setIdempotencyKey("key-123");
+        OrderEntity legacy = orderWithItem(SKU_1, 1, PRICE_TEN);
+        legacy.setIdempotencyKey("key-123");
+        when(orderRepository.findByIdempotencyKey("key-123")).thenReturn(Optional.of(legacy));
+
+        assertThat(orderService.createOrder(incoming)).isSameAs(legacy);
+    }
+
+    @Test
+    @DisplayName("createOrder refuse aussi une requête concurrente de même clé mais au contenu différent")
+    void createOrder_throws_whenConcurrentOrderHasDifferentRequest() {
+        OrderEntity incoming = orderWithItem(SKU_1, 5, null);
+        incoming.setIdempotencyKey("key-123");
+        OrderEntity concurrent = orderWithItem(SKU_1, 1, PRICE_TEN);
+        concurrent.setIdempotencyKey("key-123");
+        concurrent.setRequestHash(OrderServiceImpl.computeRequestHash(orderWithItem(SKU_1, 1, null)));
+        stubCatalog(SKU_1, PRODUCT_NAME, PRICE_TEN);
+        when(orderRepository.findByIdempotencyKey("key-123"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(concurrent));
+        when(orderRepository.saveAndFlush(any()))
+                .thenThrow(constraintViolation(OrderServiceImpl.IDEMPOTENCY_KEY_CONSTRAINT));
+
+        assertThatThrownBy(() -> orderService.createOrder(incoming))
+                .isInstanceOf(IdempotencyKeyMismatchException.class);
+        verifyNoInteractions(orderEventPublisher);
+    }
+
+    @Test
+    @DisplayName("createOrder enregistre l'empreinte de la requête avec la commande")
+    void createOrder_storesRequestHash() {
+        OrderEntity order = orderWithItem(SKU_1, 2, null);
+        stubCatalog(SKU_1, PRODUCT_NAME, PRICE_TEN);
+        givenNoExistingOrderAndSaveEchoesBack();
+
+        OrderEntity saved = orderService.createOrder(order);
+
+        assertThat(saved.getRequestHash())
+                .hasSize(64)
+                .isEqualTo(OrderServiceImpl.computeRequestHash(orderWithItem(SKU_1, 2, null)));
+    }
+
+    @Test
+    @DisplayName("computeRequestHash ignore l'ordre des articles et le prix, mais pas le client ni les quantités")
+    void computeRequestHash_dependsOnCustomerSkusAndQuantitiesOnly() {
+        OrderEntity reference = new OrderEntity();
+        reference.setCustomerId(CUSTOMER_ID);
+        reference.setItems(List.of(item(SKU_1, 2), item(SKU_2, 3)));
+        String hash = OrderServiceImpl.computeRequestHash(reference);
+
+        OrderEntity reordered = new OrderEntity();
+        reordered.setCustomerId(CUSTOMER_ID);
+        reordered.setItems(List.of(item(SKU_2, 3, PRICE_TEN), item(SKU_1, 2)));
+        assertThat(OrderServiceImpl.computeRequestHash(reordered)).isEqualTo(hash);
+
+        OrderEntity otherQuantity = new OrderEntity();
+        otherQuantity.setCustomerId(CUSTOMER_ID);
+        otherQuantity.setItems(List.of(item(SKU_1, 2), item(SKU_2, 4)));
+        assertThat(OrderServiceImpl.computeRequestHash(otherQuantity)).isNotEqualTo(hash);
+
+        OrderEntity otherCustomer = new OrderEntity();
+        otherCustomer.setCustomerId("cust-2");
+        otherCustomer.setItems(List.of(item(SKU_1, 2), item(SKU_2, 3)));
+        assertThat(OrderServiceImpl.computeRequestHash(otherCustomer)).isNotEqualTo(hash);
     }
 
     @Test
