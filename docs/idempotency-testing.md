@@ -14,6 +14,7 @@ requête. Une clé déjà connue renvoie la commande existante, sans nouvelle co
 | 5 | Même body, nouvelle clé | `200`, **nouvelle** commande (la clé identifie la tentative, pas le contenu) |
 | 6 | Même clé, body différent | `200`, commande **d'origine** renvoyée, nouveau body ignoré ⚠ limite connue |
 | 7 | Requêtes simultanées, même clé | `200` partout, **même `orderId`**, 1 seule commande |
+| 8 | Rejeu des évènements stock (Kafka) | Évènements ignorés (`♻`), statuts inchangés, aucun nouvel `OrderConfirmedEvent` |
 
 Le fonctionnement est décrit dans [`saga-flow.md` § 5](saga-flow.md#5-garanties--invariants).
 
@@ -229,6 +230,61 @@ done; wait
 > (la 1re requête avait déjà commité) et les suivantes sont passées par le scénario 2 :
 > relancer avec une nouvelle clé ou plus d'itérations. Le chevauchement est plus fréquent
 > au 1er appel, quand l'appel au catalog-service allonge la transaction.
+
+---
+
+## 8. Rejeu des évènements stock côté Kafka
+
+Kafka livre *at-least-once* : après un rebalance ou un redémarrage, `orders-service` peut
+recevoir à nouveau un `StockReservedEvent` ou un `StockRejectedEvent` déjà traité.
+`StockEventListener` n'applique une transition qu'à une commande encore `PENDING`, et ignore
+l'évènement sinon. On simule la redélivrance en ramenant les offsets du consumer group au début.
+
+1. Faire au moins le scénario 1, pour avoir des commandes `CONFIRMED`. Pour avoir aussi un
+   `StockRejectedEvent` à rejouer, commander un SKU sans stock : `SKU-PIXEL9` est à
+   `available_quantity = 0`, stock-service rejette (`Insufficient stock`) et la commande passe `FAILED`.
+
+   ```bash
+   curl -s -X POST localhost:8080/api/v1/orders -H "Content-Type: application/json" \
+     -H "Idempotency-Key: $(cat /proc/sys/kernel/random/uuid)" \
+     -d '{"customerId":"CUST-001","items":[{"sku":"SKU-PIXEL9","quantity":1}]}' | jq '{orderId, status}'
+   ```
+
+   Puis compter les évènements de sortie :
+
+   ```bash
+   psql-orders -c "select event_type, count(*) from outbox_event group by event_type"
+   psql-orders -c "select status, count(*) from orders group by status"
+   ```
+
+2. **Arrêter `orders-service`** : on ne peut pas déplacer les offsets d'un groupe actif.
+
+3. Ramener les offsets de `orders-service-group` au début des topics stock :
+
+   ```bash
+   sudo docker exec broker-kafka kafka-consumer-groups --bootstrap-server broker-kafka:29092 \
+     --group orders-service-group --topic stock.reserved --topic stock.rejected \
+     --reset-offsets --to-earliest --execute
+   ```
+
+4. Redémarrer `orders-service` : il relit **tous** les évènements stock.
+
+**Attendu**
+
+- Un log par évènement relu :
+  `♻ StockReservedEvent ignored for orderId=<id>: order is already CONFIRMED (duplicate or late delivery)`
+  (ou `StockRejectedEvent … already FAILED`).
+- Les deux requêtes de l'étape 1 donnent **les mêmes chiffres** : aucun nouvel
+  `OrderConfirmedEvent` ou `OrderFailedEvent`, aucun changement de statut.
+- Le lag du groupe revient à 0 (évènements acquittés, pas de boucle de rejeu) :
+
+  ```bash
+  sudo docker exec broker-kafka kafka-consumer-groups --bootstrap-server broker-kafka:29092 \
+    --describe --group orders-service-group
+  ```
+
+> Une commande encore `PENDING` dont l'évènement stock est relu est traitée normalement :
+> c'est sa première livraison effective.
 
 ---
 

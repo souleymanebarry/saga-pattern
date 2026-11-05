@@ -90,6 +90,12 @@ stateDiagram-v2
 > `STOCK_RESERVED` puis `CONFIRMED`. La réservation est **actée avant** la confirmation
 > (deux `save` successifs) — on ne saute jamais directement à `CONFIRMED`.
 
+> ♻ **Idempotence des listeners** : Kafka livre *at-least-once*, une réponse du stock peut
+> donc arriver plusieurs fois. `StockEventListener` n'applique une transition qu'à une commande
+> encore **PENDING** ; sinon l'événement est ignoré (log `♻`, aucun `save`, aucune publication)
+> puis acquitté. Un `StockReservedEvent` rejoué ne republie donc pas `OrderConfirmedEvent`, et
+> un `StockRejectedEvent` tardif ne fait jamais repasser une commande `CONFIRMED` en `FAILED`.
+
 ### États déclarés mais non encore utilisés
 
 L'enum `OrderStatus` prévoit des états pour une évolution future, **non câblés** aujourd'hui :
