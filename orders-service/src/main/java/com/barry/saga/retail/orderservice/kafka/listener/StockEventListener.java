@@ -24,6 +24,7 @@ import java.util.UUID;
 
 import static com.barry.saga.retail.orderservice.entities.enums.OrderStatus.CONFIRMED;
 import static com.barry.saga.retail.orderservice.entities.enums.OrderStatus.FAILED;
+import static com.barry.saga.retail.orderservice.entities.enums.OrderStatus.PENDING;
 import static com.barry.saga.retail.orderservice.entities.enums.OrderStatus.STOCK_RESERVED;
 
 @Component
@@ -39,6 +40,9 @@ public class StockEventListener {
      * Le stock est réservé avec succès : on acte d'abord la réservation
      * (STOCK_RESERVED), puis — en l'absence d'étape paiement — on confirme
      * la commande (CONFIRMED) et on publie un OrderConfirmedEvent.
+     * <p>
+     * Idempotent : Kafka livre <i>at-least-once</i>, l'événement peut donc arriver plusieurs fois
+     * (rebalance, redémarrage, rejeu). Seule une commande encore {@code PENDING} est traitée.
      */
     @KafkaListener(topics = "${spring.kafka.topics.stock-reserved}")
     @Transactional
@@ -47,6 +51,10 @@ public class StockEventListener {
         log.info("📥 Received StockReservedEvent for orderId={}", orderId);
 
         orderRepository.findById(orderId).ifPresentOrElse(order -> {
+            if (isAlreadyProcessed(order, "StockReservedEvent")) {
+                return;
+            }
+
             // 1. Réservation actée
             order.setStatus(STOCK_RESERVED);
             order.setUpdatedAt(LocalDateTime.now());
@@ -71,6 +79,9 @@ public class StockEventListener {
     /**
      * Stock insuffisant → échec de la commande : statut FAILED et publication
      * d'un OrderFailedEvent (compensation / notification aval).
+     * <p>
+     * Idempotent : seule une commande encore {@code PENDING} est traitée. Un rejet arrivé
+     * après une confirmation ne doit pas faire repasser la commande en FAILED.
      */
     @KafkaListener(topics = "${spring.kafka.topics.stock-rejected}")
     @Transactional
@@ -80,6 +91,10 @@ public class StockEventListener {
                 orderId, event.getReason());
 
         orderRepository.findById(orderId).ifPresentOrElse(order -> {
+            if (isAlreadyProcessed(order, "StockRejectedEvent")) {
+                return;
+            }
+
             order.setStatus(FAILED);
             order.setUpdatedAt(LocalDateTime.now());
             orderRepository.save(order);
@@ -90,6 +105,20 @@ public class StockEventListener {
         }, () -> log.warn("⚠ Order {} not found for StockRejectedEvent — skipping", orderId));
 
         ack.acknowledge();
+    }
+
+    /**
+     * Garde de transition : la réponse du stock ne s'applique qu'à une commande PENDING.
+     * Sinon l'événement est un doublon (ou arrive trop tard) : on l'ignore sans republier,
+     * et l'appelant acquitte quand même pour ne pas le rejouer indéfiniment.
+     */
+    private boolean isAlreadyProcessed(OrderEntity order, String eventType) {
+        if (order.getStatus() == PENDING) {
+            return false;
+        }
+        log.info("♻ {} ignored for orderId={}: order is already {} (duplicate or late delivery)",
+                eventType, order.getOrderId(), order.getStatus());
+        return true;
     }
 
     // ----------------------------------------------------------------------
