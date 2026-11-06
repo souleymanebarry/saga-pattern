@@ -20,7 +20,7 @@ spring:
     change-log: classpath:db/changelog/db.changelog-master.yaml
     enabled: true
 
-  # Kafka  ← ici ! plus d’espace devant « kafka »
+  # Kafka
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
