@@ -34,15 +34,13 @@ public class KafkaConsumerConfig {
      * Une seule factory suffit : le type concret de l'événement est résolu
      * dynamiquement par le Schema Registry (specific.avro.reader=true).
      * <p>
-     * Base = configuration Spring Boot ({@code spring.kafka.*}) : bootstrap-servers et
+     * Base = configuration Spring Boot ({@code spring.kafka.*}) : bootstrap-servers,
+     * identité Kafka ({@code spring.kafka.consumer.group-id}) et
      * {@code spring.kafka.properties.*} (dont schema.registry.url), puis les réglages
      * propres à ce consommateur.
      */
     public Map<String, Object> consumerProps() {
         Map<String, Object> props = new HashMap<>(kafkaProperties.buildConsumerProperties());
-
-        // 🔑 Identité Kafka
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, "orders-service-group");
 
         // 🔐 Offsets contrôlés par le métier
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
