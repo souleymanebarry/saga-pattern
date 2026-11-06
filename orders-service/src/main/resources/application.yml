@@ -23,6 +23,9 @@ spring:
   # Kafka  ← ici ! plus d’espace devant « kafka »
   kafka:
     bootstrap-servers: localhost:9092
+    consumer:
+      client-id: orders-service-consumer
+      group-id: orders-service-group
     topics:
       order-placed: order.placed
       order-confirmed: order.confirmed
