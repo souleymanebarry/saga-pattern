@@ -20,9 +20,12 @@ spring:
     change-log: classpath:db/changelog/db.changelog-master.yaml
     enabled: true
 
-  # Kafka  ← ici ! plus d’espace devant « kafka »
+  # Kafka
   kafka:
     bootstrap-servers: localhost:9092
+    consumer:
+      client-id: orders-service-consumer
+      group-id: orders-service-group
     topics:
       order-placed: order.placed
       order-confirmed: order.confirmed
